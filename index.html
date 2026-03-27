@@ -300,6 +300,85 @@
   }
 
   /**
+   * Circle method: 1-factorization of K_n for partnership-first scheduling.
+   * Used when format is all-doubles. Guarantees unique partnerships.
+   */
+  function circleSchedule(players, tablesPerRound) {
+    const n = players.length;
+    // Generate round-robin: n-1 rounds of n/2 partnership pairs
+    const indices = Array.from({length: n}, (_, i) => i);
+    // Shuffle non-fixed to get variety across calls
+    const rest = indices.slice(1);
+    for (let i = rest.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [rest[i], rest[j]] = [rest[j], rest[i]];
+    }
+    const all = [0, ...rest];
+
+    const partnershipRounds = [];
+    for (let r = 0; r < n - 1; r++) {
+      const pairs = [[all[0], all[n-1]]];
+      for (let i = 1; i < n/2; i++)
+        pairs.push([all[i], all[n-1-i]]);
+      partnershipRounds.push(pairs);
+      const last = all.pop();
+      all.splice(1, 0, last);
+    }
+
+    // All ways to group partnership pairs into doubles tables
+    function pairUp(items) {
+      if (items.length <= 2) return items.length === 2 ? [[[items[0], items[1]]]] : [[]];
+      const [first, ...rest] = items;
+      const result = [];
+      for (let i = 0; i < rest.length; i++) {
+        const remaining = rest.filter((_, j) => j !== i);
+        for (const sub of pairUp(remaining))
+          result.push([[first, rest[i]], ...sub]);
+      }
+      return result;
+    }
+    const pairIndices = Array.from({length: n/2}, (_, i) => i);
+    const allGroupings = pairUp(pairIndices);
+
+    const opp = Array.from({length: n}, () => Array(n).fill(0));
+    const schedule = [];
+
+    for (const matching of partnershipRounds) {
+      let bestTables = [];
+      let bestScore = Infinity;
+
+      for (const grouping of allGroupings) {
+        let score = 0;
+        const tables = [];
+        for (const [ei, ej] of grouping) {
+          const [a, b] = matching[ei];
+          const [c, d] = matching[ej];
+          score += opp[a][c] + opp[a][d] + opp[b][c] + opp[b][d];
+          tables.push({ sideA: [a, b], sideB: [c, d] });
+        }
+        if (score < bestScore) { bestScore = score; bestTables = [tables]; }
+        else if (score === bestScore) bestTables.push(tables);
+      }
+
+      const chosen = bestTables[Math.floor(Math.random() * bestTables.length)];
+      schedule.push(chosen);
+      for (const t of chosen)
+        for (const a of t.sideA) for (const b of t.sideB) {
+          opp[a][b]++; opp[b][a]++;
+        }
+    }
+
+    // Convert indices to player objects
+    return schedule.map(round => ({
+      tables: round.map(t => ({
+        format: 'doubles',
+        sideA: t.sideA.map(i => players[i]),
+        sideB: t.sideB.map(i => players[i])
+      }))
+    }));
+  }
+
+  /**
    * Generate a full schedule. Generates multiple candidate schedules
    * and picks the one with best variety (no repeated teams/partnerships).
    */
@@ -367,22 +446,44 @@
       return parMax * 10000 + oppMax * 1000 + parSqSum * 10 + oppSqSum;
     }
 
+    // Use circle method for even player counts with all-doubles format
+    const allDoubles = formats.every(f => f === 4) && n % 2 === 0;
     const maxAttempts = n <= 8 ? 20 : 40;
-    const timeLimit = 10000; // 10 seconds max
+    const timeLimit = 10000;
     const startTime = Date.now();
     let best = null;
     let bestScore = Infinity;
 
     for (let a = 0; a < maxAttempts; a++) {
-      const candidate = generateCandidate();
+      let candidate;
+      if (allDoubles) {
+        // Circle method: guaranteed unique partnerships
+        const rounds = circleSchedule(players, formats.length);
+        const opp = Array.from({ length: n }, () => Array(n).fill(0));
+        const par = Array.from({ length: n }, () => Array(n).fill(0));
+        for (const round of rounds)
+          for (const table of round.tables) {
+            for (const a of table.sideA) for (const b of table.sideB) {
+              opp[players.indexOf(a)][players.indexOf(b)]++;
+              opp[players.indexOf(b)][players.indexOf(a)]++;
+            }
+            for (const side of [table.sideA, table.sideB])
+              for (let i = 0; i < side.length; i++)
+                for (let j = i + 1; j < side.length; j++) {
+                  par[players.indexOf(side[i])][players.indexOf(side[j])]++;
+                  par[players.indexOf(side[j])][players.indexOf(side[i])]++;
+                }
+          }
+        candidate = { rounds, opp, par };
+      } else {
+        candidate = generateCandidate();
+      }
       const score = scoreSchedule(candidate);
       if (score < bestScore) {
         bestScore = score;
         best = candidate.rounds;
       }
-      // Stop early if we found a perfect schedule (no partner or team repeats)
       if (bestScore < 2000) break;
-      // Time limit for larger groups
       if (Date.now() - startTime > timeLimit) break;
     }
 
