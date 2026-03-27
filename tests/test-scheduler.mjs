@@ -67,6 +67,94 @@ test('7 players, 3 tables → uses only 2 tables', () => {
   assert.strictEqual(formats.reduce((a, b) => a + b, 0), 7);
 });
 
+// --- assignRound tests ---
+
+test('assignRound with 2 players produces valid singles match', () => {
+  const players = [
+    { name: 'A', colorIndex: 0 },
+    { name: 'B', colorIndex: 1 }
+  ];
+  const opponentMatrix = [[0, 0], [0, 0]];
+  const partnerMatrix = [[0, 0], [0, 0]];
+  const round = Scheduler.assignRound(players, [2], opponentMatrix, partnerMatrix);
+
+  assert.strictEqual(round.tables.length, 1);
+  assert.strictEqual(round.tables[0].format, 'singles');
+  assert.strictEqual(round.tables[0].sideA.length, 1);
+  assert.strictEqual(round.tables[0].sideB.length, 1);
+});
+
+test('assignRound with 3 players produces 2v1', () => {
+  const players = [
+    { name: 'A', colorIndex: 0 },
+    { name: 'B', colorIndex: 1 },
+    { name: 'C', colorIndex: 2 }
+  ];
+  const n = 3;
+  const opponentMatrix = Array.from({ length: n }, () => Array(n).fill(0));
+  const partnerMatrix = Array.from({ length: n }, () => Array(n).fill(0));
+  const round = Scheduler.assignRound(players, [3], opponentMatrix, partnerMatrix);
+
+  assert.strictEqual(round.tables.length, 1);
+  assert.strictEqual(round.tables[0].format, '2v1');
+  const total = round.tables[0].sideA.length + round.tables[0].sideB.length;
+  assert.strictEqual(total, 3);
+});
+
+// --- generateSchedule tests ---
+
+test('generateSchedule: no sit-outs (every round uses all players)', () => {
+  const players = Array.from({ length: 6 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+  const rounds = Scheduler.generateSchedule(players, 2);
+
+  for (const round of rounds) {
+    const playerNames = new Set();
+    for (const table of round.tables) {
+      for (const p of [...table.sideA, ...table.sideB]) {
+        playerNames.add(p.name);
+      }
+    }
+    assert.strictEqual(playerNames.size, 6, `Round should have all 6 players, got ${playerNames.size}`);
+  }
+});
+
+test('generateSchedule: opponent variety (6 players, every pair meets)', () => {
+  const players = Array.from({ length: 6 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+  const rounds = Scheduler.generateSchedule(players, 2);
+
+  const n = 6;
+  const met = Array.from({ length: n }, () => Array(n).fill(false));
+  for (const round of rounds) {
+    for (const table of round.tables) {
+      for (const a of table.sideA) {
+        for (const b of table.sideB) {
+          const ai = players.indexOf(a);
+          const bi = players.indexOf(b);
+          met[ai][bi] = true;
+          met[bi][ai] = true;
+        }
+      }
+    }
+  }
+
+  let allMet = true;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (!met[i][j]) allMet = false;
+    }
+  }
+  assert.ok(allMet, 'Not all player pairs have been opponents');
+});
+
+test('generateSchedule: 2 players produces exactly 1 round', () => {
+  const players = [
+    { name: 'A', colorIndex: 0 },
+    { name: 'B', colorIndex: 1 }
+  ];
+  const rounds = Scheduler.generateSchedule(players, 1);
+  assert.strictEqual(rounds.length, 1);
+});
+
 // --- Runner ---
 
 async function run() {

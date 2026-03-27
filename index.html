@@ -59,9 +59,167 @@
     return best ? best.formats : [];
   }
 
+  /**
+   * Get all combinations of `k` items from `arr`.
+   */
+  function combinations(arr, k) {
+    if (k === 0) return [[]];
+    if (arr.length < k) return [];
+    const [first, ...rest] = arr;
+    const withFirst = combinations(rest, k - 1).map(c => [first, ...c]);
+    const withoutFirst = combinations(rest, k);
+    return [...withFirst, ...withoutFirst];
+  }
+
+  /**
+   * Score how "costly" it is for groupA to face groupB, based on opponent history.
+   * Lower is better. Returns the max opponent count among all cross-pairs.
+   */
+  function opponentCost(groupA, groupB, players, opponentMatrix) {
+    let maxCount = 0;
+    for (const a of groupA) {
+      for (const b of groupB) {
+        const ai = players.indexOf(a);
+        const bi = players.indexOf(b);
+        maxCount = Math.max(maxCount, opponentMatrix[ai][bi]);
+      }
+    }
+    return maxCount;
+  }
+
+  /**
+   * Score partner cost for a group being on the same side. Lower is better.
+   */
+  function partnerCost(group, players, partnerMatrix) {
+    let maxCount = 0;
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const ai = players.indexOf(group[i]);
+        const bi = players.indexOf(group[j]);
+        maxCount = Math.max(maxCount, partnerMatrix[ai][bi]);
+      }
+    }
+    return maxCount;
+  }
+
+  /**
+   * For a given set of players at a table, find the best side split.
+   * format: 2 (1v1), 3 (2v1), 4 (2v2)
+   * Returns { sideA, sideB, oppCost, partCost }
+   */
+  function bestSplit(group, format, players, opponentMatrix, partnerMatrix) {
+    const sideASize = format === 2 ? 1 : 2;
+    const splits = combinations(group, sideASize);
+    let best = null;
+
+    for (const sideA of splits) {
+      const sideB = group.filter(p => !sideA.includes(p));
+      const oc = opponentCost(sideA, sideB, players, opponentMatrix);
+      const pcA = partnerCost(sideA, players, partnerMatrix);
+      const pcB = partnerCost(sideB, players, partnerMatrix);
+      const pc = Math.max(pcA, pcB);
+
+      if (!best || oc < best.oppCost || (oc === best.oppCost && pc < best.partCost)) {
+        best = { sideA, sideB, oppCost: oc, partCost: pc };
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Assign one round of play.
+   * players: full player array (for index lookups)
+   * formats: array from decideTableFormats (e.g. [4, 2])
+   * Returns a Round: { tables: Table[] }
+   */
+  function assignRound(players, formats, opponentMatrix, partnerMatrix) {
+    const sortedFormats = [...formats].sort((a, b) => b - a);
+    const pool = [...players];
+    const tables = [];
+
+    for (const format of sortedFormats) {
+      const candidates = combinations(pool, format);
+      let bestTable = null;
+
+      for (const group of candidates) {
+        const split = bestSplit(group, format, players, opponentMatrix, partnerMatrix);
+        if (!bestTable || split.oppCost < bestTable.oppCost ||
+            (split.oppCost === bestTable.oppCost && split.partCost < bestTable.partCost)) {
+          bestTable = { ...split, format };
+        }
+      }
+
+      const formatLabel = format === 4 ? 'doubles' : format === 3 ? '2v1' : 'singles';
+      tables.push({
+        format: formatLabel,
+        sideA: bestTable.sideA,
+        sideB: bestTable.sideB
+      });
+
+      for (const p of [...bestTable.sideA, ...bestTable.sideB]) {
+        pool.splice(pool.indexOf(p), 1);
+      }
+    }
+
+    return { tables };
+  }
+
+  /**
+   * Generate a full schedule of rounds.
+   * Keeps generating until every pair has been opponents at least once,
+   * or until hitting a cap of 20 rounds.
+   */
+  function generateSchedule(players, tableCount) {
+    const n = players.length;
+    const opponentMatrix = Array.from({ length: n }, () => Array(n).fill(0));
+    const partnerMatrix = Array.from({ length: n }, () => Array(n).fill(0));
+    const rounds = [];
+    const maxRounds = 20;
+
+    while (rounds.length < maxRounds) {
+      const formats = decideTableFormats(n, tableCount);
+      const round = assignRound(players, formats, opponentMatrix, partnerMatrix);
+      rounds.push(round);
+
+      // Update matrices
+      for (const table of round.tables) {
+        for (const a of table.sideA) {
+          for (const b of table.sideB) {
+            const ai = players.indexOf(a);
+            const bi = players.indexOf(b);
+            opponentMatrix[ai][bi]++;
+            opponentMatrix[bi][ai]++;
+          }
+        }
+        const sides = [table.sideA, table.sideB];
+        for (const side of sides) {
+          for (let i = 0; i < side.length; i++) {
+            for (let j = i + 1; j < side.length; j++) {
+              const ai = players.indexOf(side[i]);
+              const bi = players.indexOf(side[j]);
+              partnerMatrix[ai][bi]++;
+              partnerMatrix[bi][ai]++;
+            }
+          }
+        }
+      }
+
+      // Check if all pairs have been opponents
+      let allMet = true;
+      for (let i = 0; i < n && allMet; i++) {
+        for (let j = i + 1; j < n && allMet; j++) {
+          if (opponentMatrix[i][j] === 0) allMet = false;
+        }
+      }
+      if (allMet) break;
+    }
+
+    return rounds;
+  }
+
   // Expose for testing
   if (typeof globalThis !== 'undefined') {
-    globalThis.Scheduler = { decideTableFormats };
+    globalThis.Scheduler = { decideTableFormats, assignRound, generateSchedule };
   }
 
   </script>
