@@ -66,7 +66,11 @@
 
         if (leftover < 0) continue;
         if (remaining === 0 && leftover === 0) {
-          return Array(d).fill(4);
+          const formats = Array(d).fill(4);
+          if (!best || formats.length > best.formats.length) {
+            best = { formats, threes: 0 };
+          }
+          continue;
         }
         if (remaining === 0) continue;
 
@@ -80,7 +84,7 @@
         for (let i = 0; i < extra; i++) formats.push(3);
         for (let i = 0; i < remaining - extra; i++) formats.push(2);
 
-        if (!best || extra < best.threes || (extra === best.threes && formats.length < best.formats.length)) {
+        if (!best || extra < best.threes || (extra === best.threes && formats.length > best.formats.length)) {
           best = { formats, threes: extra };
         }
       }
@@ -157,41 +161,137 @@
   }
 
   /**
+   * Generate all ways to partition `pool` into groups of sizes given by `formats`.
+   * Returns array of arrays-of-groups, e.g. [[[A,B],[C,D],[E,F]], ...]
+   */
+  function partitions(pool, formats, allPlayers) {
+    if (formats.length === 0) return [[]];
+    const [size, ...restFormats] = formats;
+    const groups = combinations(pool, size);
+    const results = [];
+    for (const group of groups) {
+      const remaining = pool.filter(p => !group.includes(p));
+      for (const rest of partitions(remaining, restFormats, allPlayers)) {
+        results.push([group, ...rest]);
+      }
+    }
+    // Deduplicate partitions where formats have equal sizes
+    if (formats.length > 1 && formats[0] === formats[1]) {
+      const seen = new Set();
+      const unique = [];
+      for (const partition of results) {
+        const key = partition.map(g => g.map(p => allPlayers.indexOf(p)).sort().join(',')).sort().join('|');
+        if (!seen.has(key)) {
+          seen.add(key);
+          unique.push(partition);
+        }
+      }
+      return unique;
+    }
+    return results;
+  }
+
+  /**
    * Assign one round of play.
-   * players: full player array (for index lookups)
-   * formats: array from decideTableFormats (e.g. [4, 2])
-   * Returns a Round: { tables: Table[] }
+   * For small groups (≤10 players): enumerates all partitions and picks the best.
+   * For larger groups: uses greedy assignment with multiple random orderings.
    */
   function assignRound(players, formats, opponentMatrix, partnerMatrix) {
     const sortedFormats = [...formats].sort((a, b) => b - a);
-    const pool = [...players];
-    const tables = [];
 
-    for (const format of sortedFormats) {
-      const candidates = combinations(pool, format);
-      let bestTable = null;
+    if (players.length <= 10) {
+      return assignRoundExhaustive(players, sortedFormats, opponentMatrix, partnerMatrix);
+    }
+    return assignRoundGreedy(players, sortedFormats, opponentMatrix, partnerMatrix);
+  }
 
-      for (const group of candidates) {
+  function assignRoundExhaustive(players, sortedFormats, opponentMatrix, partnerMatrix) {
+    const allPartitions = partitions([...players], sortedFormats, players);
+
+    let bestRound = null;
+    let bestOppCost = Infinity;
+    let bestPartCost = Infinity;
+
+    for (const partition of allPartitions) {
+      let roundOppCost = 0;
+      let roundPartCost = 0;
+      const splits = [];
+
+      for (let i = 0; i < partition.length; i++) {
+        const group = partition[i];
+        const format = sortedFormats[i];
         const split = bestSplit(group, format, players, opponentMatrix, partnerMatrix);
-        if (!bestTable || split.oppCost < bestTable.oppCost ||
-            (split.oppCost === bestTable.oppCost && split.partCost < bestTable.partCost)) {
-          bestTable = { ...split, format };
-        }
+        splits.push(split);
+        roundOppCost += split.oppCost;
+        roundPartCost += split.partCost;
       }
 
-      const formatLabel = format === 4 ? 'doubles' : format === 3 ? '2v1' : 'singles';
-      tables.push({
-        format: formatLabel,
-        sideA: bestTable.sideA,
-        sideB: bestTable.sideB
-      });
-
-      for (const p of [...bestTable.sideA, ...bestTable.sideB]) {
-        pool.splice(pool.indexOf(p), 1);
+      if (roundOppCost < bestOppCost ||
+          (roundOppCost === bestOppCost && roundPartCost < bestPartCost)) {
+        bestOppCost = roundOppCost;
+        bestPartCost = roundPartCost;
+        bestRound = splits.map((split, i) => ({
+          format: sortedFormats[i] === 4 ? 'doubles' : sortedFormats[i] === 3 ? '2v1' : 'singles',
+          sideA: split.sideA,
+          sideB: split.sideB
+        }));
       }
     }
 
-    return { tables };
+    return { tables: bestRound };
+  }
+
+  function assignRoundGreedy(players, sortedFormats, opponentMatrix, partnerMatrix) {
+    // Try multiple random orderings and pick the best overall round
+    let bestRound = null;
+    let bestOppCost = Infinity;
+    let bestPartCost = Infinity;
+    const attempts = players.length <= 12 ? 30 : 10;
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      // Shuffle pool for this attempt
+      const pool = [...players];
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+
+      const tables = [];
+      const remaining = [...pool];
+      let roundOppCost = 0;
+      let roundPartCost = 0;
+
+      for (const format of sortedFormats) {
+        const candidates = combinations(remaining, format);
+        let bestTable = null;
+
+        for (const group of candidates) {
+          const split = bestSplit(group, format, players, opponentMatrix, partnerMatrix);
+          if (!bestTable || split.oppCost < bestTable.oppCost ||
+              (split.oppCost === bestTable.oppCost && split.partCost < bestTable.partCost)) {
+            bestTable = { ...split, format };
+          }
+        }
+
+        const formatLabel = format === 4 ? 'doubles' : format === 3 ? '2v1' : 'singles';
+        tables.push({ format: formatLabel, sideA: bestTable.sideA, sideB: bestTable.sideB });
+        roundOppCost += bestTable.oppCost;
+        roundPartCost += bestTable.partCost;
+
+        for (const p of [...bestTable.sideA, ...bestTable.sideB]) {
+          remaining.splice(remaining.indexOf(p), 1);
+        }
+      }
+
+      if (roundOppCost < bestOppCost ||
+          (roundOppCost === bestOppCost && roundPartCost < bestPartCost)) {
+        bestOppCost = roundOppCost;
+        bestPartCost = roundPartCost;
+        bestRound = tables;
+      }
+    }
+
+    return { tables: bestRound };
   }
 
   /**

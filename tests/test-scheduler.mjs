@@ -36,9 +36,9 @@ test('4 players, 1 table → 1× doubles', () => {
   assert.deepStrictEqual(formats, [4]);
 });
 
-test('4 players, 2 tables → 1× doubles (uses fewer tables)', () => {
+test('4 players, 2 tables → 2× singles (prefers more tables)', () => {
   const formats = Scheduler.decideTableFormats(4, 2);
-  assert.deepStrictEqual(formats, [4]);
+  assert.deepStrictEqual(formats.sort((a, b) => b - a), [2, 2]);
 });
 
 test('5 players, 2 tables → 1× 2v1 + 1× singles', () => {
@@ -61,10 +61,17 @@ test('8 players, 2 tables → 2× doubles', () => {
   assert.deepStrictEqual(formats.sort((a, b) => b - a), [4, 4]);
 });
 
-test('7 players, 3 tables → uses only 2 tables', () => {
+test('7 players, 3 tables → uses all 3 tables (2v1 + singles + singles)', () => {
   const formats = Scheduler.decideTableFormats(7, 3);
-  assert.strictEqual(formats.length, 2);
+  assert.strictEqual(formats.length, 3);
   assert.strictEqual(formats.reduce((a, b) => a + b, 0), 7);
+  assert.deepStrictEqual(formats.sort((a, b) => b - a), [3, 2, 2]);
+});
+
+test('6 players, 3 tables → uses all 3 tables (3× singles)', () => {
+  const formats = Scheduler.decideTableFormats(6, 3);
+  assert.strictEqual(formats.length, 3);
+  assert.deepStrictEqual(formats, [2, 2, 2]);
 });
 
 // --- min tables constraint: ceil(playerCount / 4) ---
