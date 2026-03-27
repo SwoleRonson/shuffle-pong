@@ -201,7 +201,7 @@
   function assignRound(players, formats, opponentMatrix, partnerMatrix) {
     const sortedFormats = [...formats].sort((a, b) => b - a);
 
-    if (players.length <= 10) {
+    if (players.length <= 8) {
       return assignRoundExhaustive(players, sortedFormats, opponentMatrix, partnerMatrix);
     }
     return assignRoundGreedy(players, sortedFormats, opponentMatrix, partnerMatrix);
@@ -251,7 +251,7 @@
     // Try multiple random orderings and pick the best overall round
     let bestRound = null;
     let bestScore = Infinity;
-    const attempts = players.length <= 12 ? 30 : 10;
+    const attempts = 30;
 
     for (let attempt = 0; attempt < attempts; attempt++) {
       const pool = [...players];
@@ -367,17 +367,23 @@
       return parMax * 10000 + oppMax * 1000 + parSqSum * 10 + oppSqSum;
     }
 
-    const attempts = n <= 10 ? 30 : 8;
+    const maxAttempts = n <= 8 ? 20 : 40;
+    const timeLimit = 10000; // 10 seconds max
+    const startTime = Date.now();
     let best = null;
     let bestScore = Infinity;
 
-    for (let a = 0; a < attempts; a++) {
+    for (let a = 0; a < maxAttempts; a++) {
       const candidate = generateCandidate();
       const score = scoreSchedule(candidate);
       if (score < bestScore) {
         bestScore = score;
         best = candidate.rounds;
       }
+      // Stop early if we found a perfect schedule (no partner or team repeats)
+      if (bestScore < 2000) break;
+      // Time limit for larger groups
+      if (Date.now() - startTime > timeLimit) break;
     }
 
     return best;
@@ -543,6 +549,7 @@
     const input = document.getElementById('player-input');
     const name = input.value.trim();
     if (!name) return;
+    if (state.players.length >= 14) return;
     if (state.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
     state.players.push({ name, colorIndex: nextColorIndex++ });
     state._focusInput = true;
