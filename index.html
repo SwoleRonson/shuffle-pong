@@ -768,7 +768,7 @@
     const input = document.getElementById('player-input');
     const name = input.value.trim();
     if (!name) return;
-    if (state.players.length >= 20) return;
+    if (state.players.length >= 14) return;
     if (state.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
     state.players.push({ name, colorIndex: nextColorIndex++ });
     state._focusInput = true;
