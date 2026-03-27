@@ -268,7 +268,9 @@
   function renderSetup() {
     const app = document.getElementById('app');
     const maxTables = Math.max(1, Math.floor(state.players.length / 2));
+    const minTables = Math.max(1, Math.ceil(state.players.length / 4));
     if (state.tableCount > maxTables) state.tableCount = maxTables;
+    if (state.tableCount < minTables) state.tableCount = minTables;
 
     app.innerHTML = `
       <div class="max-w-lg mx-auto px-4 py-8">
@@ -301,12 +303,12 @@
         <div class="mb-6">
           <label class="block text-xs text-gray-400 uppercase tracking-wider mb-2">Tables Available</label>
           <div class="flex items-center gap-4">
-            <button onclick="changeTableCount(-1)"
-              class="w-9 h-9 rounded-lg border border-gray-700 text-white text-lg hover:bg-gray-700"
+            <button onclick="changeTableCount(-1)" ${state.tableCount <= minTables ? 'disabled' : ''}
+              class="w-9 h-9 rounded-lg border border-gray-700 text-white text-lg ${state.tableCount <= minTables ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}"
               style="background: #16213e;">−</button>
-            <span class="text-2xl font-bold text-white min-w-[40px] text-center">${state.tableCount}</span>
-            <button onclick="changeTableCount(1)"
-              class="w-9 h-9 rounded-lg border border-gray-700 text-white text-lg hover:bg-gray-700"
+            <span class="text-2xl font-bold text-white min-w-[40px] text-center">${state.tableCount} / ${maxTables}</span>
+            <button onclick="changeTableCount(1)" ${state.tableCount >= maxTables ? 'disabled' : ''}
+              class="w-9 h-9 rounded-lg border border-gray-700 text-white text-lg ${state.tableCount >= maxTables ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}"
               style="background: #16213e;">+</button>
           </div>
         </div>
@@ -412,7 +414,8 @@
 
   function changeTableCount(delta) {
     const maxTables = Math.max(1, Math.floor(state.players.length / 2));
-    state.tableCount = Math.max(1, Math.min(maxTables, state.tableCount + delta));
+    const minTables = Math.max(1, Math.ceil(state.players.length / 4));
+    state.tableCount = Math.max(minTables, Math.min(maxTables, state.tableCount + delta));
     renderSetup();
   }
 
