@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shuffle Pong</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen" style="background: #1a1a2e;">
+  <div id="app"></div>
+  <script>
+  // ===== Scheduler Module =====
+
+  const PALETTE = [
+    '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
+    '#1abc9c', '#e67e22', '#2980b9', '#27ae60', '#f1c40f',
+    '#8e44ad', '#16a085', '#d35400', '#c0392b', '#2c3e50',
+    '#7f8c8d', '#d4ac0d', '#1a5276', '#a93226', '#117a65'
+  ];
+
+  /**
+   * Decide table formats for N players across at most T tables.
+   * Returns an array of player counts per table (2, 3, or 4).
+   * Prefers doubles (4) and singles (2). Uses 2v1 (3) only for odd remainders.
+   */
+  function decideTableFormats(playerCount, tableCount) {
+    const maxTables = Math.min(tableCount, Math.floor(playerCount / 2));
+
+    let best = null;
+
+    for (let numTables = 1; numTables <= maxTables; numTables++) {
+      for (let d = numTables; d >= 0; d--) {
+        const remaining = numTables - d;
+        const doublesPlayers = d * 4;
+        const leftover = playerCount - doublesPlayers;
+
+        if (leftover < 0) continue;
+        if (remaining === 0 && leftover === 0) {
+          return Array(d).fill(4);
+        }
+        if (remaining === 0) continue;
+
+        const base = remaining * 2;
+        const extra = leftover - base;
+
+        if (extra < 0) continue;
+        if (extra > remaining) continue;
+
+        const formats = Array(d).fill(4);
+        for (let i = 0; i < extra; i++) formats.push(3);
+        for (let i = 0; i < remaining - extra; i++) formats.push(2);
+
+        if (!best || extra < best.threes || (extra === best.threes && formats.length < best.formats.length)) {
+          best = { formats, threes: extra };
+        }
+      }
+    }
+
+    return best ? best.formats : [];
+  }
+
+  // Expose for testing
+  if (typeof globalThis !== 'undefined') {
+    globalThis.Scheduler = { decideTableFormats };
+  }
+
+  </script>
+</body>
+</html>
