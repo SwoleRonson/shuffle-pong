@@ -5,6 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Shuffle Pong</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 14px;
+      color: white;
+      cursor: default;
+    }
+    .pill button {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.7);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0 0 0 4px;
+      line-height: 1;
+    }
+    .pill button:hover {
+      color: white;
+    }
+    .card {
+      background: #16213e;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+  </style>
 </head>
 <body class="min-h-screen" style="background: #1a1a2e;">
   <div id="app"></div>
@@ -221,6 +251,180 @@
   if (typeof globalThis !== 'undefined') {
     globalThis.Scheduler = { decideTableFormats, assignRound, generateSchedule };
   }
+
+  // ===== App State =====
+
+  const state = {
+    players: [],
+    tableCount: 1,
+    rounds: [],
+    currentView: 'setup'
+  };
+
+  // ===== Render: Setup View =====
+
+  function renderSetup() {
+    const app = document.getElementById('app');
+    const maxTables = Math.max(1, Math.floor(state.players.length / 2));
+    if (state.tableCount > maxTables) state.tableCount = maxTables;
+
+    app.innerHTML = `
+      <div class="max-w-lg mx-auto px-4 py-8">
+        <div class="text-center mb-8">
+          <h1 class="text-2xl font-bold text-white">Shuffle Pong</h1>
+          <p class="text-gray-500 text-sm">Table Tennis Group Scheduler</p>
+        </div>
+
+        <div class="mb-6">
+          <label class="block text-xs text-gray-400 uppercase tracking-wider mb-2">Players</label>
+          <div id="player-pills" class="flex flex-wrap gap-2 mb-3">
+            ${state.players.map((p, i) => `
+              <span class="pill" style="background: ${PALETTE[p.colorIndex % 20]}">
+                ${escapeHtml(p.name)}
+                <button onclick="removePlayer(${i})" title="Remove">&times;</button>
+              </span>
+            `).join('')}
+          </div>
+          <div class="flex gap-2">
+            <input id="player-input" type="text" placeholder="Add player name..."
+              class="flex-1 px-3 py-2 rounded-lg border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+              style="background: #16213e;"
+              onkeydown="if(event.key==='Enter')addPlayer()">
+            <button onclick="addPlayer()"
+              class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500">Add</button>
+          </div>
+          <p class="text-gray-600 text-xs mt-1">Press Enter to add, click &times; to remove</p>
+        </div>
+
+        <div class="mb-6">
+          <label class="block text-xs text-gray-400 uppercase tracking-wider mb-2">Tables Available</label>
+          <div class="flex items-center gap-4">
+            <button onclick="changeTableCount(-1)"
+              class="w-9 h-9 rounded-lg border border-gray-700 text-white text-lg hover:bg-gray-700"
+              style="background: #16213e;">−</button>
+            <span class="text-2xl font-bold text-white min-w-[40px] text-center">${state.tableCount}</span>
+            <button onclick="changeTableCount(1)"
+              class="w-9 h-9 rounded-lg border border-gray-700 text-white text-lg hover:bg-gray-700"
+              style="background: #16213e;">+</button>
+          </div>
+        </div>
+
+        <button onclick="generate()" ${state.players.length < 2 ? 'disabled' : ''}
+          class="w-full py-3 rounded-xl text-white font-bold text-base ${state.players.length < 2 ? 'opacity-40 cursor-not-allowed' : 'hover:opacity-90 cursor-pointer'}"
+          style="background: linear-gradient(135deg, #3498db, #2ecc71);">
+          Generate Schedule →
+        </button>
+
+        <p class="text-center text-gray-600 text-xs mt-2">${getSummaryText()}</p>
+      </div>
+    `;
+
+    document.getElementById('player-input')?.focus();
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function getSummaryText() {
+    const n = state.players.length;
+    if (n < 2) return 'Add at least 2 players to generate';
+    const formats = decideTableFormats(n, state.tableCount);
+    const types = formats.map(f => f === 4 ? 'doubles' : f === 3 ? '2v1' : 'singles');
+    const unique = [...new Set(types)].join(' + ');
+    return `${n} players × ${formats.length} table${formats.length > 1 ? 's' : ''} → ${unique}`;
+  }
+
+  // ===== Render: Schedule View =====
+
+  function renderSchedule() {
+    const app = document.getElementById('app');
+    const roundCount = state.rounds.length;
+
+    app.innerHTML = `
+      <div class="max-w-lg mx-auto px-4 py-8">
+        <div class="flex justify-between items-center mb-4">
+          <h1 class="text-xl font-bold text-white">Shuffle Pong</h1>
+          <button onclick="editPlayers()"
+            class="px-3 py-1.5 rounded-lg border border-gray-700 text-blue-400 text-sm hover:bg-gray-800"
+            style="background: #16213e;">← Edit Players</button>
+        </div>
+
+        <p class="text-gray-500 text-sm mb-4">
+          ${state.players.length} players · ${state.rounds[0]?.tables.length || 0} table${(state.rounds[0]?.tables.length || 0) > 1 ? 's' : ''} · ${roundCount} round${roundCount > 1 ? 's' : ''} · Repeats from round 1 after completion
+        </p>
+
+        ${state.rounds.map((round, ri) => `
+          <div class="card" style="border-left: 3px solid ${ri === 0 ? '#3498db' : '#333'};">
+            <div class="text-sm font-bold mb-3" style="color: ${ri === 0 ? '#3498db' : '#aaa'};">
+              Round ${ri + 1}
+            </div>
+            ${round.tables.map((table, ti) => `
+              <div class="${ti < round.tables.length - 1 ? 'mb-3' : ''}">
+                <div class="text-xs text-gray-600 uppercase tracking-wider mb-1.5">
+                  Table ${ti + 1} · ${table.format === 'singles' ? 'Singles' : table.format === 'doubles' ? 'Doubles' : '2v1'}
+                </div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  ${table.sideA.map(p => `
+                    <span class="pill" style="background: ${PALETTE[p.colorIndex % 20]}; font-size: 13px; padding: 2px 10px;">
+                      ${escapeHtml(p.name)}
+                    </span>
+                  `).join('')}
+                  <span class="text-gray-600 font-bold text-sm">vs</span>
+                  ${table.sideB.map(p => `
+                    <span class="pill" style="background: ${PALETTE[p.colorIndex % 20]}; font-size: 13px; padding: 2px 10px;">
+                      ${escapeHtml(p.name)}
+                    </span>
+                  `).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  // ===== Event Handlers =====
+
+  function addPlayer() {
+    const input = document.getElementById('player-input');
+    const name = input.value.trim();
+    if (!name) return;
+    if (state.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
+    state.players.push({ name, colorIndex: state.players.length });
+    renderSetup();
+  }
+
+  function removePlayer(index) {
+    state.players.splice(index, 1);
+    renderSetup();
+  }
+
+  function changeTableCount(delta) {
+    const maxTables = Math.max(1, Math.floor(state.players.length / 2));
+    state.tableCount = Math.max(1, Math.min(maxTables, state.tableCount + delta));
+    renderSetup();
+  }
+
+  function generate() {
+    if (state.players.length < 2) return;
+    state.rounds = generateSchedule(state.players, state.tableCount);
+    state.currentView = 'schedule';
+    renderSchedule();
+  }
+
+  function editPlayers() {
+    state.currentView = 'setup';
+    state.rounds = [];
+    renderSetup();
+  }
+
+  // ===== Init =====
+
+  if (typeof document !== 'undefined') renderSetup();
 
   </script>
 </body>
