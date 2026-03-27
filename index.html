@@ -254,6 +254,8 @@
 
   // ===== App State =====
 
+  let nextColorIndex = 0;
+
   const state = {
     players: [],
     tableCount: 1,
@@ -394,7 +396,7 @@
     const name = input.value.trim();
     if (!name) return;
     if (state.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
-    state.players.push({ name, colorIndex: state.players.length });
+    state.players.push({ name, colorIndex: nextColorIndex++ });
     renderSetup();
   }
 
