@@ -154,8 +154,9 @@
       const pcB = partnerCost(sideB, players, partnerMatrix);
       const pc = Math.max(pcA, pcB);
 
-      if (!best || oc < best.oppCost || (oc === best.oppCost && pc < best.partCost)) {
-        best = { sideA, sideB, oppCost: oc, partCost: pc };
+      const score = oc + pc;
+      if (!best || score < best.score) {
+        best = { sideA, sideB, oppCost: oc, partCost: pc, score };
       }
     }
     return best;
@@ -209,7 +210,8 @@
   function assignRoundExhaustive(players, sortedFormats, opponentMatrix, partnerMatrix) {
     const allPartitions = partitions([...players], sortedFormats, players);
 
-    let bestRound = null;
+    // Collect all tied-best partitions and pick randomly among them
+    let bestRounds = [];
     let bestScore = Infinity;
 
     for (const partition of allPartitions) {
@@ -227,18 +229,22 @@
       }
 
       // Opponent variety is primary (weighted 10x), partner variety is secondary
-      const score = roundOppCost * 10 + roundPartCost;
+      const score = roundOppCost + roundPartCost;
+      const roundData = splits.map((split, i) => ({
+        format: sortedFormats[i] === 4 ? 'doubles' : sortedFormats[i] === 3 ? '2v1' : 'singles',
+        sideA: split.sideA,
+        sideB: split.sideB
+      }));
       if (score < bestScore) {
         bestScore = score;
-        bestRound = splits.map((split, i) => ({
-          format: sortedFormats[i] === 4 ? 'doubles' : sortedFormats[i] === 3 ? '2v1' : 'singles',
-          sideA: split.sideA,
-          sideB: split.sideB
-        }));
+        bestRounds = [roundData];
+      } else if (score === bestScore) {
+        bestRounds.push(roundData);
       }
     }
 
-    return { tables: bestRound };
+    // Pick randomly among tied-best to enable schedule variety across attempts
+    return { tables: bestRounds[Math.floor(Math.random() * bestRounds.length)] };
   }
 
   function assignRoundGreedy(players, sortedFormats, opponentMatrix, partnerMatrix) {
@@ -266,7 +272,7 @@
 
         for (const group of candidates) {
           const split = bestSplit(group, format, players, opponentMatrix, partnerMatrix);
-          const tableScore = split.oppCost * 10 + split.partCost;
+          const tableScore = split.oppCost + split.partCost;
           if (tableScore < bestTableScore) {
             bestTableScore = tableScore;
             bestTable = { ...split, format };
@@ -283,7 +289,7 @@
         }
       }
 
-      const score = roundOppCost * 10 + roundPartCost;
+      const score = roundOppCost + roundPartCost;
       if (score < bestScore) {
         bestScore = score;
         bestRound = tables;
@@ -294,76 +300,87 @@
   }
 
   /**
-   * Generate a full schedule of rounds.
-   * Keeps generating until every pair has been opponents at least once,
-   * or until hitting a cap of 20 rounds.
+   * Generate a full schedule. Generates multiple candidate schedules
+   * and picks the one with best variety (no repeated teams/partnerships).
    */
   function generateSchedule(players, tableCount) {
     const n = players.length;
-    const opponentMatrix = Array.from({ length: n }, () => Array(n).fill(0));
-    const partnerMatrix = Array.from({ length: n }, () => Array(n).fill(0));
-    const rounds = [];
+    const formats = decideTableFormats(n, tableCount);
+    const hasTeams = formats.some(f => f >= 3);
     const maxRounds = 20;
-    let opponentsCoveredAt = 0;
 
-    while (rounds.length < maxRounds) {
-      const formats = decideTableFormats(n, tableCount);
-      const round = assignRound(players, formats, opponentMatrix, partnerMatrix);
-      rounds.push(round);
+    function generateCandidate() {
+      const opp = Array.from({ length: n }, () => Array(n).fill(0));
+      const par = Array.from({ length: n }, () => Array(n).fill(0));
+      const teamSet = new Set();
+      const rounds = [];
 
-      // Update matrices
-      for (const table of round.tables) {
-        for (const a of table.sideA) {
-          for (const b of table.sideB) {
-            const ai = players.indexOf(a);
-            const bi = players.indexOf(b);
-            opponentMatrix[ai][bi]++;
-            opponentMatrix[bi][ai]++;
+      while (rounds.length < maxRounds) {
+        const round = assignRound(players, formats, opp, par);
+        rounds.push(round);
+
+        for (const table of round.tables) {
+          for (const a of table.sideA) for (const b of table.sideB) {
+            opp[players.indexOf(a)][players.indexOf(b)]++;
+            opp[players.indexOf(b)][players.indexOf(a)]++;
           }
-        }
-        const sides = [table.sideA, table.sideB];
-        for (const side of sides) {
-          for (let i = 0; i < side.length; i++) {
-            for (let j = i + 1; j < side.length; j++) {
-              const ai = players.indexOf(side[i]);
-              const bi = players.indexOf(side[j]);
-              partnerMatrix[ai][bi]++;
-              partnerMatrix[bi][ai]++;
+          for (const side of [table.sideA, table.sideB]) {
+            for (let i = 0; i < side.length; i++)
+              for (let j = i + 1; j < side.length; j++) {
+                par[players.indexOf(side[i])][players.indexOf(side[j])]++;
+                par[players.indexOf(side[j])][players.indexOf(side[i])]++;
+              }
+            if (side.length > 1) {
+              const key = side.map(p => players.indexOf(p)).sort().join(',');
+              teamSet.add(key);
             }
           }
         }
-      }
 
-      // Check if all pairs have been opponents
-      let allOpponentsMet = true;
-      for (let i = 0; i < n && allOpponentsMet; i++) {
-        for (let j = i + 1; j < n && allOpponentsMet; j++) {
-          if (opponentMatrix[i][j] === 0) allOpponentsMet = false;
+        let allOppMet = true;
+        for (let i = 0; i < n && allOppMet; i++)
+          for (let j = i + 1; j < n && allOppMet; j++)
+            if (opp[i][j] === 0) allOppMet = false;
+
+        if (allOppMet) {
+          if (!hasTeams) break;
+          let maxPar = 0;
+          for (let i = 0; i < n; i++)
+            for (let j = i + 1; j < n; j++)
+              maxPar = Math.max(maxPar, par[i][j]);
+          if (maxPar <= 1) break;
         }
       }
+      return { rounds, opp, par };
+    }
 
-      if (allOpponentsMet) {
-        // If no team formats (all singles), stop immediately
-        const hasTeams = formats.some(f => f >= 3);
-        if (!hasTeams) break;
-
-        // Check if any pair has been partners more than once
-        let maxPartnerCount = 0;
-        for (let i = 0; i < n; i++) {
-          for (let j = i + 1; j < n; j++) {
-            maxPartnerCount = Math.max(maxPartnerCount, partnerMatrix[i][j]);
-          }
+    function scoreSchedule(result) {
+      let oppMax = 0, parMax = 0, oppSqSum = 0, parSqSum = 0;
+      for (let i = 0; i < n; i++)
+        for (let j = i + 1; j < n; j++) {
+          oppMax = Math.max(oppMax, result.opp[i][j]);
+          parMax = Math.max(parMax, result.par[i][j]);
+          oppSqSum += result.opp[i][j] ** 2;
+          parSqSum += result.par[i][j] ** 2;
         }
-        // Stop if no repeated partnerships
-        if (maxPartnerCount <= 1) break;
+      // Heavily penalise max partner/opponent repeats, then evenness
+      return parMax * 10000 + oppMax * 1000 + parSqSum * 10 + oppSqSum;
+    }
 
-        // Otherwise, continue for one more cycle to rotate partnerships
-        if (!opponentsCoveredAt) opponentsCoveredAt = rounds.length;
-        if (rounds.length >= opponentsCoveredAt * 2) break;
+    const attempts = n <= 10 ? 30 : 8;
+    let best = null;
+    let bestScore = Infinity;
+
+    for (let a = 0; a < attempts; a++) {
+      const candidate = generateCandidate();
+      const score = scoreSchedule(candidate);
+      if (score < bestScore) {
+        bestScore = score;
+        best = candidate.rounds;
       }
     }
 
-    return rounds;
+    return best;
   }
 
   // Expose for testing
