@@ -321,7 +321,10 @@
       </div>
     `;
 
-    document.getElementById('player-input')?.focus();
+    if (state._focusInput) {
+      document.getElementById('player-input')?.focus();
+      state._focusInput = false;
+    }
   }
 
   function escapeHtml(text) {
@@ -397,11 +400,13 @@
     if (!name) return;
     if (state.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
     state.players.push({ name, colorIndex: nextColorIndex++ });
+    state._focusInput = true;
     renderSetup();
   }
 
   function removePlayer(index) {
     state.players.splice(index, 1);
+    state._focusInput = true;
     renderSetup();
   }
 
@@ -426,7 +431,10 @@
 
   // ===== Init =====
 
-  if (typeof document !== 'undefined') renderSetup();
+  if (typeof document !== 'undefined') {
+    state._focusInput = true;
+    renderSetup();
+  }
 
   </script>
 </body>
