@@ -67,6 +67,35 @@ test('7 players, 3 tables → uses only 2 tables', () => {
   assert.strictEqual(formats.reduce((a, b) => a + b, 0), 7);
 });
 
+// --- min tables constraint: ceil(playerCount / 4) ---
+
+test('5 players need at least 2 tables (max 4 per table)', () => {
+  const minTables = Math.ceil(5 / 4); // 2
+  const formats = Scheduler.decideTableFormats(5, minTables);
+  assert.strictEqual(formats.reduce((a, b) => a + b, 0), 5);
+  assert.ok(formats.every(f => f <= 4), 'no table should exceed 4 players');
+});
+
+test('9 players need at least 3 tables', () => {
+  const minTables = Math.ceil(9 / 4); // 3
+  const formats = Scheduler.decideTableFormats(9, minTables);
+  assert.strictEqual(formats.reduce((a, b) => a + b, 0), 9);
+  assert.ok(formats.every(f => f <= 4), 'no table should exceed 4 players');
+});
+
+test('decideTableFormats: no table exceeds 4 players for 2-20 players', () => {
+  for (let n = 2; n <= 20; n++) {
+    const minTables = Math.ceil(n / 4);
+    const maxTables = Math.floor(n / 2);
+    for (let t = minTables; t <= maxTables; t++) {
+      const formats = Scheduler.decideTableFormats(n, t);
+      const total = formats.reduce((a, b) => a + b, 0);
+      assert.strictEqual(total, n, `${n} players, ${t} tables: total should be ${n}, got ${total}`);
+      assert.ok(formats.every(f => f >= 2 && f <= 4), `${n} players, ${t} tables: all formats should be 2-4`);
+    }
+  }
+});
+
 // --- assignRound tests ---
 
 test('assignRound with 2 players produces valid singles match', () => {
