@@ -210,8 +210,7 @@
     const allPartitions = partitions([...players], sortedFormats, players);
 
     let bestRound = null;
-    let bestOppCost = Infinity;
-    let bestPartCost = Infinity;
+    let bestScore = Infinity;
 
     for (const partition of allPartitions) {
       let roundOppCost = 0;
@@ -227,10 +226,10 @@
         roundPartCost += split.partCost;
       }
 
-      if (roundOppCost < bestOppCost ||
-          (roundOppCost === bestOppCost && roundPartCost < bestPartCost)) {
-        bestOppCost = roundOppCost;
-        bestPartCost = roundPartCost;
+      // Opponent variety is primary (weighted 10x), partner variety is secondary
+      const score = roundOppCost * 10 + roundPartCost;
+      if (score < bestScore) {
+        bestScore = score;
         bestRound = splits.map((split, i) => ({
           format: sortedFormats[i] === 4 ? 'doubles' : sortedFormats[i] === 3 ? '2v1' : 'singles',
           sideA: split.sideA,
@@ -245,12 +244,10 @@
   function assignRoundGreedy(players, sortedFormats, opponentMatrix, partnerMatrix) {
     // Try multiple random orderings and pick the best overall round
     let bestRound = null;
-    let bestOppCost = Infinity;
-    let bestPartCost = Infinity;
+    let bestScore = Infinity;
     const attempts = players.length <= 12 ? 30 : 10;
 
     for (let attempt = 0; attempt < attempts; attempt++) {
-      // Shuffle pool for this attempt
       const pool = [...players];
       for (let i = pool.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -265,11 +262,13 @@
       for (const format of sortedFormats) {
         const candidates = combinations(remaining, format);
         let bestTable = null;
+        let bestTableScore = Infinity;
 
         for (const group of candidates) {
           const split = bestSplit(group, format, players, opponentMatrix, partnerMatrix);
-          if (!bestTable || split.oppCost < bestTable.oppCost ||
-              (split.oppCost === bestTable.oppCost && split.partCost < bestTable.partCost)) {
+          const tableScore = split.oppCost * 10 + split.partCost;
+          if (tableScore < bestTableScore) {
+            bestTableScore = tableScore;
             bestTable = { ...split, format };
           }
         }
@@ -284,10 +283,9 @@
         }
       }
 
-      if (roundOppCost < bestOppCost ||
-          (roundOppCost === bestOppCost && roundPartCost < bestPartCost)) {
-        bestOppCost = roundOppCost;
-        bestPartCost = roundPartCost;
+      const score = roundOppCost * 10 + roundPartCost;
+      if (score < bestScore) {
+        bestScore = score;
         bestRound = tables;
       }
     }
