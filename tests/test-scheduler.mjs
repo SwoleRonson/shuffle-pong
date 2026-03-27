@@ -182,6 +182,66 @@ test('generateSchedule: opponent variety (6 players, every pair meets)', () => {
   assert.ok(allMet, 'Not all player pairs have been opponents');
 });
 
+test('generateSchedule: no repeated partnerships when format allows (8p, 3 tables)', () => {
+  const players = Array.from({ length: 8 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+  const rounds = Scheduler.generateSchedule(players, 3);
+  const n = 8;
+  const partnerCount = Array.from({ length: n }, () => Array(n).fill(0));
+
+  for (const round of rounds) {
+    for (const table of round.tables) {
+      for (const side of [table.sideA, table.sideB]) {
+        for (let i = 0; i < side.length; i++) {
+          for (let j = i + 1; j < side.length; j++) {
+            const ai = players.indexOf(side[i]);
+            const bi = players.indexOf(side[j]);
+            partnerCount[ai][bi]++;
+            partnerCount[bi][ai]++;
+          }
+        }
+      }
+    }
+  }
+
+  let maxPartner = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      maxPartner = Math.max(maxPartner, partnerCount[i][j]);
+    }
+  }
+  assert.ok(maxPartner <= 1, `Max partner repeat should be ≤1, got ${maxPartner}`);
+});
+
+test('generateSchedule: 4 players, 1 table — no repeated partnerships', () => {
+  const players = Array.from({ length: 4 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+  const rounds = Scheduler.generateSchedule(players, 1);
+  const n = 4;
+  const partnerCount = Array.from({ length: n }, () => Array(n).fill(0));
+
+  for (const round of rounds) {
+    for (const table of round.tables) {
+      for (const side of [table.sideA, table.sideB]) {
+        for (let i = 0; i < side.length; i++) {
+          for (let j = i + 1; j < side.length; j++) {
+            const ai = players.indexOf(side[i]);
+            const bi = players.indexOf(side[j]);
+            partnerCount[ai][bi]++;
+            partnerCount[bi][ai]++;
+          }
+        }
+      }
+    }
+  }
+
+  let maxPartner = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      maxPartner = Math.max(maxPartner, partnerCount[i][j]);
+    }
+  }
+  assert.ok(maxPartner <= 1, `Max partner repeat should be ≤1, got ${maxPartner}`);
+});
+
 test('generateSchedule: 2 players produces exactly 1 round', () => {
   const players = [
     { name: 'A', colorIndex: 0 },

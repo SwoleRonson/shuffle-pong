@@ -304,6 +304,7 @@
     const partnerMatrix = Array.from({ length: n }, () => Array(n).fill(0));
     const rounds = [];
     const maxRounds = 20;
+    let opponentsCoveredAt = 0;
 
     while (rounds.length < maxRounds) {
       const formats = decideTableFormats(n, tableCount);
@@ -334,13 +335,32 @@
       }
 
       // Check if all pairs have been opponents
-      let allMet = true;
-      for (let i = 0; i < n && allMet; i++) {
-        for (let j = i + 1; j < n && allMet; j++) {
-          if (opponentMatrix[i][j] === 0) allMet = false;
+      let allOpponentsMet = true;
+      for (let i = 0; i < n && allOpponentsMet; i++) {
+        for (let j = i + 1; j < n && allOpponentsMet; j++) {
+          if (opponentMatrix[i][j] === 0) allOpponentsMet = false;
         }
       }
-      if (allMet) break;
+
+      if (allOpponentsMet) {
+        // If no team formats (all singles), stop immediately
+        const hasTeams = formats.some(f => f >= 3);
+        if (!hasTeams) break;
+
+        // Check if any pair has been partners more than once
+        let maxPartnerCount = 0;
+        for (let i = 0; i < n; i++) {
+          for (let j = i + 1; j < n; j++) {
+            maxPartnerCount = Math.max(maxPartnerCount, partnerMatrix[i][j]);
+          }
+        }
+        // Stop if no repeated partnerships
+        if (maxPartnerCount <= 1) break;
+
+        // Otherwise, continue for one more cycle to rotate partnerships
+        if (!opponentsCoveredAt) opponentsCoveredAt = rounds.length;
+        if (rounds.length >= opponentsCoveredAt * 2) break;
+      }
     }
 
     return rounds;
