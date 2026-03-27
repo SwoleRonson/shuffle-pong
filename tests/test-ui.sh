@@ -147,15 +147,46 @@ click_ref e5
 click_ref e6
 assert_snapshot_contains "schedule view shows round cards" "Round 1"
 assert_snapshot_contains "schedule view shows Edit Players button" "Edit Players"
-assert_snapshot_contains "schedule view shows cycling message" "Repeats from round 1"
+assert_snapshot_contains "schedule shows round status" "Round 1 of"
 assert_snapshot_contains "schedule shows player pills" "Alice"
 assert_snapshot_contains "schedule shows vs separator" "vs"
 assert_snapshot_contains "schedule shows table format" "TABLE"
 
 # Test: Edit Players returns to setup
-click_ref e2
+# Get the Edit Players button ref from snapshot
+EDIT_REF=$(agent-browser snapshot 2>&1 | grep "Edit Players" | grep -o 'ref=e[0-9]*' | head -1 | sed 's/ref=//')
+click_ref "$EDIT_REF"
 assert_snapshot_contains "edit returns to setup view" "Add player name"
 assert_snapshot_contains "players preserved after edit" "Alice"
+
+echo ""
+echo "=== Round Navigation Tests ==="
+
+# Re-generate schedule for round nav tests
+click_ref e6
+assert_snapshot_contains "Next Round button exists" "Next Round"
+
+# Click Next Round
+NEXT_REF=$(agent-browser snapshot 2>&1 | grep "Next Round" | grep -o 'ref=e[0-9]*' | head -1 | sed 's/ref=//')
+click_ref "$NEXT_REF"
+assert_snapshot_contains "advances to round 2" "Round 2 of"
+
+# Keep clicking until we see Restart button
+for i in $(seq 1 20); do
+  snapshot=$(agent-browser snapshot 2>&1)
+  if echo "$snapshot" | grep -q "Restart from Round 1"; then
+    break
+  fi
+  REF=$(echo "$snapshot" | grep "Next Round" | grep -o 'ref=e[0-9]*' | head -1 | sed 's/ref=//')
+  if [ -z "$REF" ]; then break; fi
+  click_ref "$REF"
+done
+assert_snapshot_contains "last round shows restart button" "Restart from Round 1"
+
+# Click restart — should wrap to round 1
+RESTART_REF=$(agent-browser snapshot 2>&1 | grep "Restart" | grep -o 'ref=e[0-9]*' | head -1 | sed 's/ref=//')
+click_ref "$RESTART_REF"
+assert_snapshot_contains "restart wraps to round 1" "Round 1 of"
 
 echo ""
 echo "=== Results ==="

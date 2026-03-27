@@ -260,7 +260,8 @@
     players: [],
     tableCount: 1,
     rounds: [],
-    currentView: 'setup'
+    currentView: 'setup',
+    currentRound: 0
   };
 
   // ===== Render: Setup View =====
@@ -360,12 +361,18 @@
         </div>
 
         <p class="text-gray-500 text-sm mb-4">
-          ${state.players.length} players · ${state.rounds[0]?.tables.length || 0} table${(state.rounds[0]?.tables.length || 0) > 1 ? 's' : ''} · ${roundCount} round${roundCount > 1 ? 's' : ''} · Repeats from round 1 after completion
+          ${state.players.length} players · ${state.rounds[0]?.tables.length || 0} table${(state.rounds[0]?.tables.length || 0) > 1 ? 's' : ''} · Round ${state.currentRound + 1} of ${roundCount}
         </p>
 
+        <button onclick="nextRound()"
+          class="w-full py-2.5 mb-4 rounded-xl text-white font-bold text-sm hover:opacity-90 cursor-pointer"
+          style="background: linear-gradient(135deg, #3498db, #2ecc71);">
+          ${state.currentRound >= roundCount - 1 ? 'Restart from Round 1 ↺' : 'Next Round →'}
+        </button>
+
         ${state.rounds.map((round, ri) => `
-          <div class="card" style="border-left: 3px solid ${ri === 0 ? '#3498db' : '#333'};">
-            <div class="text-sm font-bold mb-3" style="color: ${ri === 0 ? '#3498db' : '#aaa'};">
+          <div class="card" style="border-left: 3px solid ${ri === state.currentRound ? '#3498db' : '#333'};">
+            <div class="text-sm font-bold mb-3" style="color: ${ri === state.currentRound ? '#3498db' : '#aaa'};">
               Round ${ri + 1}
             </div>
             ${round.tables.map((table, ti) => `
@@ -423,12 +430,19 @@
     if (state.players.length < 2) return;
     state.rounds = generateSchedule(state.players, state.tableCount);
     state.currentView = 'schedule';
+    state.currentRound = 0;
+    renderSchedule();
+  }
+
+  function nextRound() {
+    state.currentRound = (state.currentRound + 1) % state.rounds.length;
     renderSchedule();
   }
 
   function editPlayers() {
     state.currentView = 'setup';
     state.rounds = [];
+    state.currentRound = 0;
     renderSetup();
   }
 
