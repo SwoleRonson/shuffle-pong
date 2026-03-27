@@ -534,14 +534,7 @@
           for (let j = i + 1; j < n && allOppMet; j++)
             if (opp[i][j] === 0) allOppMet = false;
 
-        if (allOppMet) {
-          if (!hasTeams) break;
-          let maxPar = 0;
-          for (let i = 0; i < n; i++)
-            for (let j = i + 1; j < n; j++)
-              maxPar = Math.max(maxPar, par[i][j]);
-          if (maxPar <= 1) break;
-        }
+        if (allOppMet) break;
       }
       return { rounds, opp, par };
     }
