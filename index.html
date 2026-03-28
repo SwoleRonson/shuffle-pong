@@ -228,7 +228,7 @@
         roundPartCost += split.partCost;
       }
 
-      // Opponent variety is primary (weighted 10x), partner variety is secondary
+      // Combined opponent + partner cost (equal weight)
       const score = roundOppCost + roundPartCost;
       const roundData = splits.map((split, i) => ({
         format: sortedFormats[i] === 4 ? 'doubles' : sortedFormats[i] === 3 ? '2v1' : 'singles',
@@ -335,16 +335,6 @@
     const numSingles = formats.filter(f => f === 2).length;
     const num2v1 = formats.filter(f => f === 3).length;
 
-    // Helper: enumerate ways to pick `k` items from `items`
-    function choose(items, k) {
-      if (k === 0) return [[]];
-      if (items.length < k) return [];
-      const [first, ...rest] = items;
-      return [
-        ...choose(rest, k - 1).map(c => [first, ...c]),
-        ...choose(rest, k)
-      ];
-    }
 
     // Helper: enumerate pairings of items into pairs
     function pairUp(items) {
@@ -395,7 +385,7 @@
             const [a, b] = pairs[ei];
             const [c, d] = pairs[ej];
             score += opp[a][c] + opp[a][d] + opp[b][c] + opp[b][d];
-            tables.push({ sideA: [a, b], sideB: [c, d] });
+            tables.push({ format: 4, sideA: [a, b], sideB: [c, d] });
           }
           if (score < bestScore) { bestScore = score; bestTables = [tables]; }
           else if (score === bestScore) bestTables.push(tables);
@@ -415,7 +405,7 @@
 
         const pairIndices = Array.from({length: pairs.length}, (_, i) => i);
         // Choose which pairs go to doubles tables
-        const doublesPairSets = choose(pairIndices, numDoubles * 2);
+        const doublesPairSets = combinations(pairIndices, numDoubles * 2);
 
         let bestTables = [];
         let bestScore = Infinity;
@@ -484,7 +474,7 @@
     // Convert indices to player objects
     return schedule.map(round => ({
       tables: round.map(t => ({
-        format: t.format === 4 ? 'doubles' : t.format === 3 ? '2v1' : t.sideA ? 'singles' : 'singles',
+        format: t.format === 4 ? 'doubles' : t.format === 3 ? '2v1' : 'singles',
         sideA: (t.sideA || []).map(i => players[i]),
         sideB: (t.sideB || []).map(i => players[i])
       }))
@@ -498,13 +488,11 @@
   function generateSchedule(players, tableCount) {
     const n = players.length;
     const formats = decideTableFormats(n, tableCount);
-    const hasTeams = formats.some(f => f >= 3);
     const maxRounds = 20;
 
     function generateCandidate() {
       const opp = Array.from({ length: n }, () => Array(n).fill(0));
       const par = Array.from({ length: n }, () => Array(n).fill(0));
-      const teamSet = new Set();
       const rounds = [];
 
       while (rounds.length < maxRounds) {
@@ -522,10 +510,6 @@
                 par[players.indexOf(side[i])][players.indexOf(side[j])]++;
                 par[players.indexOf(side[j])][players.indexOf(side[i])]++;
               }
-            if (side.length > 1) {
-              const key = side.map(p => players.indexOf(p)).sort().join(',');
-              teamSet.add(key);
-            }
           }
         }
 
@@ -589,7 +573,7 @@
 
     // Greedy multi-candidate approach (mixed formats or circle fallback)
     const maxAttempts = 40;
-    const timeLimit = 10000;
+    const timeLimit = 15000;
     const startTime = Date.now();
     let best = null;
     let bestScore = Infinity;
