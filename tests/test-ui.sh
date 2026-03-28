@@ -427,7 +427,7 @@ for name in A B C D; do
   fill_ref e2 "$name"
   click_ref e3
 done
-click_ref e6  # increment table count to 2
+click_ref e5  # increment table count to 2 (+ button with 4 players)
 
 # Test: tables param appears in URL
 url=$(agent-browser eval "location.search" 2>&1)

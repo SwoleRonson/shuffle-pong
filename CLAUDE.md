@@ -44,7 +44,7 @@ Round assignment uses equal-weight scoring: `oppCost + partCost + soloCost`. The
 
 ### URL sync
 
-Player names persist in the URL hash (`#Name1,Name2,Name3`). Refreshing restores the setup with names pre-filled.
+Setup state persists in the URL. Player names go in the hash (`#Name1,Name2,Name3`), table count and allow2v1 go in query params (`?tables=3&allow2v1=false`). Defaults (tables=1, allow2v1=true) are omitted to keep URLs clean. Refreshing restores the full setup.
 
 ## Limitations
 
