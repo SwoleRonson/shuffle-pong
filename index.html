@@ -54,54 +54,49 @@
    * Prefers doubles (4) and singles (2). Uses 2v1 (3) only for odd remainders.
    */
   function decideTableFormats(playerCount, tableCount, allow2v1 = true) {
-    function search(n) {
-      const maxTables = Math.min(tableCount, Math.floor(n / 2));
-      let best = null;
+    const maxTables = Math.min(tableCount, Math.floor(playerCount / 2));
 
-      for (let numTables = 1; numTables <= maxTables; numTables++) {
-        for (let d = numTables; d >= 0; d--) {
-          const remaining = numTables - d;
-          const doublesPlayers = d * 4;
-          const leftover = n - doublesPlayers;
+    let best = null;
 
-          if (leftover < 0) continue;
-          if (remaining === 0 && leftover === 0) {
-            const formats = Array(d).fill(4);
-            if (!best || formats.length > best.formats.length) {
-              best = { formats, threes: 0 };
-            }
-            continue;
+    for (let numTables = 1; numTables <= maxTables; numTables++) {
+      for (let d = numTables; d >= 0; d--) {
+        const remaining = numTables - d;
+        const doublesPlayers = d * 4;
+
+        if (remaining === 0) {
+          // All doubles tables
+          const seated = doublesPlayers;
+          if (seated > playerCount) continue;
+          const formats = Array(d).fill(4);
+          if (!best || seated > best.seated || (seated === best.seated && (formats.length > best.formats.length || (formats.length === best.formats.length && 0 < best.threes)))) {
+            best = { formats, threes: 0, seated };
           }
-          if (remaining === 0) continue;
+          continue;
+        }
 
-          const base = remaining * 2;
-          const extra = leftover - base;
-
-          if (extra < 0) continue;
-          if (extra > remaining) continue;
+        // Remaining tables are singles (2) or 2v1 (3)
+        // Try all valid splits of remaining tables into 3s and 2s
+        const maxThrees = allow2v1 ? remaining : 0;
+        for (let threes = 0; threes <= maxThrees; threes++) {
+          const twos = remaining - threes;
+          const seated = doublesPlayers + threes * 3 + twos * 2;
+          if (seated > playerCount) continue;
 
           const formats = Array(d).fill(4);
-          for (let i = 0; i < extra; i++) formats.push(3);
-          for (let i = 0; i < remaining - extra; i++) formats.push(2);
+          for (let i = 0; i < threes; i++) formats.push(3);
+          for (let i = 0; i < twos; i++) formats.push(2);
 
-          if (!allow2v1 && extra > 0) continue;
-
-          if (!best || extra < best.threes || (extra === best.threes && formats.length > best.formats.length)) {
-            best = { formats, threes: extra };
+          if (!best
+            || seated > best.seated
+            || (seated === best.seated && threes < best.threes)
+            || (seated === best.seated && threes === best.threes && formats.length > best.formats.length)) {
+            best = { formats, threes, seated };
           }
         }
       }
-
-      return best;
     }
 
-    const best = search(playerCount);
-    if (best) return best.formats;
-    if (!allow2v1 && playerCount > 1) {
-      const fallback = search(playerCount - 1);
-      if (fallback) return fallback.formats;
-    }
-    return [];
+    return best ? best.formats : [];
   }
 
   /**

@@ -102,6 +102,38 @@ function allTests() {
     assert.deepStrictEqual(formats.sort((a, b) => b - a), [3, 2]);
   });
 
+  // --- decideTableFormats with fewer tables than needed (sit-out scenarios) ---
+
+  test('under-capacity: 8p/1t → [4] (doubles, 4 sit out)', (S) => {
+    const formats = S.decideTableFormats(8, 1);
+    assert.deepStrictEqual(formats, [4]);
+  });
+
+  test('under-capacity: 10p/2t → [4,4] (8 play, 2 sit out)', (S) => {
+    const formats = S.decideTableFormats(10, 2);
+    assert.deepStrictEqual(formats.sort((a, b) => b - a), [4, 4]);
+  });
+
+  test('under-capacity: 6p/1t → [4] (doubles preferred over singles)', (S) => {
+    const formats = S.decideTableFormats(6, 1);
+    assert.deepStrictEqual(formats, [4]);
+  });
+
+  test('under-capacity: 12p/2t → [4,4] (8 play, 4 sit out)', (S) => {
+    const formats = S.decideTableFormats(12, 2);
+    assert.deepStrictEqual(formats.sort((a, b) => b - a), [4, 4]);
+  });
+
+  test('under-capacity: 9p/2t, allow2v1=true → [4,4] (8 play, 1 sits out)', (S) => {
+    const formats = S.decideTableFormats(9, 2, true);
+    assert.deepStrictEqual(formats.sort((a, b) => b - a), [4, 4]);
+  });
+
+  test('under-capacity: 9p/2t, allow2v1=false → [4,4] (8 play, 1 sits out)', (S) => {
+    const formats = S.decideTableFormats(9, 2, false);
+    assert.deepStrictEqual(formats.sort((a, b) => b - a), [4, 4]);
+  });
+
   // --- min tables constraint ---
 
   test('5 players need at least 2 tables (max 4 per table)', (S) => {
