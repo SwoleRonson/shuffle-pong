@@ -496,12 +496,11 @@
   }
 
   /**
-   * Generate a full schedule. Generates multiple candidate schedules
-   * and picks the one with best variety (no repeated teams/partnerships).
+   * Generate a full schedule for the given players and formats (all players active, no sit-outs).
+   * Generates multiple candidate schedules and picks the one with best variety.
    */
-  function generateSchedule(players, tableCount) {
+  function generateScheduleFullField(players, formats) {
     const n = players.length;
-    const formats = decideTableFormats(n, tableCount);
     const maxRounds = 20;
 
     function generateCandidate() {
@@ -582,6 +581,7 @@
         if (score < bestScore) { bestScore = score; best = rounds; }
         if (bestScore < 2000) break;
       }
+      if (best) best.forEach(round => { round.sittingOut = round.sittingOut || []; });
       return best;
     }
 
@@ -603,14 +603,84 @@
       if (Date.now() - startTime > timeLimit) break;
     }
 
-    // Shuffle table positions per round so players don't stay at the same table
-    if (best) best.forEach(round => shuffleArray(round.tables));
+    if (best) best.forEach(round => {
+      shuffleArray(round.tables);
+      round.sittingOut = round.sittingOut || [];
+    });
     return best;
+  }
+
+  /**
+   * Generate a full schedule. If there are more players than table capacity,
+   * uses sit-out rotation to ensure fair bench time.
+   */
+  function generateSchedule(players, tableCount, allow2v1 = true) {
+    const n = players.length;
+    const formats = decideTableFormats(n, tableCount, allow2v1);
+    const capacity = formats.reduce((a, b) => a + b, 0);
+    const sitOutCount = n - capacity;
+    const maxRounds = 20;
+
+    if (sitOutCount <= 0) {
+      return generateScheduleFullField(players, formats);
+    }
+
+    // Sit-out mode: build rounds one at a time, rotating who sits out
+    const opp = Array.from({ length: n }, () => Array(n).fill(0));
+    const par = Array.from({ length: n }, () => Array(n).fill(0));
+    const sitCounts = Array(n).fill(0);
+    const rounds = [];
+
+    while (rounds.length < maxRounds) {
+      // Pick sit-out players: those with fewest sit-outs, break ties randomly
+      const indices = Array.from({ length: n }, (_, i) => i);
+      indices.sort((a, b) => sitCounts[a] - sitCounts[b] || (Math.random() - 0.5));
+      const benchIndices = indices.slice(0, sitOutCount);
+      const activeIndices = indices.slice(sitOutCount);
+
+      const activePlayers = activeIndices.map(i => players[i]);
+      const benchPlayers = benchIndices.map(i => players[i]);
+      for (const bi of benchIndices) sitCounts[bi]++;
+
+      // Build sub-matrices for active players (indexed into full matrix)
+      const subOpp = activeIndices.map(i => activeIndices.map(j => opp[i][j]));
+      const subPar = activeIndices.map(i => activeIndices.map(j => par[i][j]));
+
+      const round = assignRound(activePlayers, formats, subOpp, subPar);
+      round.sittingOut = benchPlayers;
+      rounds.push(round);
+
+      // Update full matrices
+      for (const table of round.tables) {
+        for (const a of table.sideA) for (const b of table.sideB) {
+          const ai = players.indexOf(a);
+          const bi = players.indexOf(b);
+          opp[ai][bi]++; opp[bi][ai]++;
+        }
+        for (const side of [table.sideA, table.sideB])
+          for (let i = 0; i < side.length; i++)
+            for (let j = i + 1; j < side.length; j++) {
+              const ai = players.indexOf(side[i]);
+              const bi = players.indexOf(side[j]);
+              par[ai][bi]++; par[bi][ai]++;
+            }
+      }
+
+      // Check if all pairs have met as opponents
+      let allOppMet = true;
+      for (let i = 0; i < n && allOppMet; i++)
+        for (let j = i + 1; j < n && allOppMet; j++)
+          if (opp[i][j] === 0) allOppMet = false;
+      if (allOppMet) break;
+    }
+
+    rounds.forEach(round => shuffleArray(round.tables));
+    return rounds;
   }
 
   // Expose for testing
   if (typeof globalThis !== 'undefined') {
-    globalThis.Scheduler = { decideTableFormats, assignRound, generateSchedule, shuffleArray };
+    globalThis.Scheduler = { decideTableFormats, assignRound, generateSchedule, generateScheduleFullField, shuffleArray };
   }
 
   // ===== App State =====

@@ -393,6 +393,64 @@ function allTests() {
     }
   });
 
+  // --- Sit-out scheduling ---
+
+  test('sit-out: 6p/1t produces rounds with sittingOut array', (S) => {
+    const players = Array.from({ length: 6 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 1, true);
+    assert.ok(rounds.length > 0);
+    for (const round of rounds) {
+      assert.ok(Array.isArray(round.sittingOut), 'round should have sittingOut array');
+      assert.strictEqual(round.sittingOut.length, 2, '6p/1t(doubles): 2 sit out');
+      const active = new Set();
+      for (const t of round.tables) for (const p of [...t.sideA, ...t.sideB]) active.add(p.name);
+      const bench = new Set(round.sittingOut.map(p => p.name));
+      assert.strictEqual(active.size + bench.size, 6);
+      for (const name of bench) assert.ok(!active.has(name), `${name} is both active and sitting out`);
+    }
+  });
+
+  test('sit-out: rotation is fair (max - min <= 1)', (S) => {
+    const players = Array.from({ length: 6 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 1, true);
+    const sitCounts = {};
+    for (const p of players) sitCounts[p.name] = 0;
+    for (const round of rounds) {
+      for (const p of round.sittingOut) sitCounts[p.name]++;
+    }
+    const counts = Object.values(sitCounts);
+    const diff = Math.max(...counts) - Math.min(...counts);
+    assert.ok(diff <= 1, `Sit-out fairness: max-min=${diff}, counts=${JSON.stringify(sitCounts)}`);
+  });
+
+  test('sit-out: no sit-outs when capacity >= players', (S) => {
+    const players = Array.from({ length: 4 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2, true);
+    for (const round of rounds) {
+      assert.ok(!round.sittingOut || round.sittingOut.length === 0,
+        'no sit-outs when tables have enough capacity');
+    }
+  });
+
+  test('sit-out: 8p/1t — 4 play, 4 sit out each round', (S) => {
+    const players = Array.from({ length: 8 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 1, true);
+    for (const round of rounds) {
+      assert.strictEqual(round.sittingOut.length, 4);
+      const active = new Set();
+      for (const t of round.tables) for (const p of [...t.sideA, ...t.sideB]) active.add(p.name);
+      assert.strictEqual(active.size, 4);
+    }
+  });
+
+  test('sit-out: 10p/2t — 2 sit out each round', (S) => {
+    const players = Array.from({ length: 10 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2, true);
+    for (const round of rounds) {
+      assert.strictEqual(round.sittingOut.length, 2);
+    }
+  });
+
   return tests;
 }
 
