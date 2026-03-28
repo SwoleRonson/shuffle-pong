@@ -70,6 +70,38 @@ function allTests() {
     assert.deepStrictEqual(formats, [2, 2, 2]);
   });
 
+  // --- decideTableFormats with allow2v1=false ---
+
+  test('allow2v1=false: 5p/2t → [2,2] (no 2v1, 1 sits out)', (S) => {
+    const formats = S.decideTableFormats(5, 2, false);
+    assert.deepStrictEqual(formats.sort((a, b) => b - a), [2, 2]);
+  });
+
+  test('allow2v1=false: 7p/3t → [2,2,2] (no 2v1, 1 sits out)', (S) => {
+    const formats = S.decideTableFormats(7, 3, false);
+    assert.deepStrictEqual(formats.sort((a, b) => b - a), [2, 2, 2]);
+  });
+
+  test('allow2v1=false: 7p/2t → [4,2] (no 2v1, 1 sits out)', (S) => {
+    const formats = S.decideTableFormats(7, 2, false);
+    assert.deepStrictEqual(formats.sort((a, b) => b - a), [4, 2]);
+  });
+
+  test('allow2v1=false: 3p/1t → [2] (no 2v1, 1 sits out)', (S) => {
+    const formats = S.decideTableFormats(3, 1, false);
+    assert.deepStrictEqual(formats, [2]);
+  });
+
+  test('allow2v1=true: 5p/2t → [3,2] (2v1 allowed, backward compat)', (S) => {
+    const formats = S.decideTableFormats(5, 2, true);
+    assert.deepStrictEqual(formats.sort((a, b) => b - a), [3, 2]);
+  });
+
+  test('allow2v1 default: 5p/2t → [3,2] (default is true)', (S) => {
+    const formats = S.decideTableFormats(5, 2);
+    assert.deepStrictEqual(formats.sort((a, b) => b - a), [3, 2]);
+  });
+
   // --- min tables constraint ---
 
   test('5 players need at least 2 tables (max 4 per table)', (S) => {
