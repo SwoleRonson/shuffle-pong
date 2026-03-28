@@ -286,6 +286,86 @@ else
 fi
 
 echo ""
+echo "=== 2v1 Toggle Tests ==="
+
+reset_app
+fill_ref e2 "A"
+click_ref e3
+fill_ref e2 "B"
+click_ref e3
+fill_ref e2 "C"
+click_ref e3
+fill_ref e2 "D"
+click_ref e3
+fill_ref e2 "E"
+click_ref e3
+
+# 2v1 toggle should be visible and checked by default
+assert_snapshot_contains "2v1 toggle visible" "Allow 2v1 format"
+
+# Increment table count to 2 so we have 5p/2t: this forces a 2v1 table (2v1 + singles)
+click_ref e5
+
+# Summary with 5p/2t should show 2v1 as a format
+assert_snapshot_contains "5p/2t summary includes 2v1" "2v1"
+
+# Uncheck the 2v1 toggle — find the checkbox/label ref
+TOGGLE_REF=$(agent-browser snapshot 2>&1 | grep "Allow 2v1" | grep -o 'ref=e[0-9]*' | head -1 | sed 's/ref=//')
+click_ref "$TOGGLE_REF"
+
+# Summary should no longer show 2v1 as a format; the toggle label still shows but summary should change
+# With 5p/2t and 2v1 disabled, summary becomes "doubles + singles" (with 1 sit out)
+snapshot=$(agent-browser snapshot 2>&1)
+SUMMARY_LINE=$(echo "$snapshot" | grep "players ×")
+if echo "$SUMMARY_LINE" | grep -q "2v1"; then
+  echo "  FAIL: 2v1 off: no 2v1 in summary"
+  echo "        Did not expect to find: 2v1 in summary line: $SUMMARY_LINE"
+  inc FAIL
+else
+  echo "  PASS: 2v1 off: no 2v1 in summary"
+  inc PASS
+fi
+assert_snapshot_contains "2v1 off: shows sit-out in summary" "sit out"
+
+# Re-check the toggle
+TOGGLE_REF=$(agent-browser snapshot 2>&1 | grep "Allow 2v1" | grep -o 'ref=e[0-9]*' | head -1 | sed 's/ref=//')
+click_ref "$TOGGLE_REF"
+snapshot=$(agent-browser snapshot 2>&1)
+SUMMARY_LINE=$(echo "$snapshot" | grep "players ×")
+if echo "$SUMMARY_LINE" | grep -q "2v1"; then
+  echo "  PASS: 2v1 re-enabled: summary shows 2v1 again"
+  inc PASS
+else
+  echo "  FAIL: 2v1 re-enabled: summary shows 2v1 again"
+  echo "        Expected to find: 2v1 in summary line: $SUMMARY_LINE"
+  inc FAIL
+fi
+
+echo ""
+echo "=== Table Min=1 Tests ==="
+
+reset_app
+for i in $(seq 1 8); do
+  fill_ref e2 "P$i"
+  click_ref e3
+done
+
+# With 8 players, should be able to go down to 1 table
+# Click minus until we reach 1
+for i in $(seq 1 10); do
+  snapshot=$(agent-browser snapshot 2>&1)
+  if echo "$snapshot" | grep -q '"1 / 4"'; then
+    break
+  fi
+  MINUS_REF=$(echo "$snapshot" | grep '"−"' | grep -o 'ref=e[0-9]*' | head -1 | sed 's/ref=//')
+  if [ -n "$MINUS_REF" ]; then
+    click_ref "$MINUS_REF"
+  fi
+done
+assert_snapshot_contains "8p: can go down to 1 table" '"1 / 4"'
+assert_snapshot_contains "8p/1t: summary shows sit-out" "sit out"
+
+echo ""
 echo "=== Player Management Edge Cases ==="
 
 # Start fresh: reset app state
