@@ -692,7 +692,8 @@
     tableCount: 1,
     rounds: [],
     currentView: 'setup',
-    currentRound: 0
+    currentRound: 0,
+    allow2v1: true
   };
 
   // ===== Render: Setup View =====
@@ -700,7 +701,7 @@
   function renderSetup() {
     const app = document.getElementById('app');
     const maxTables = Math.max(1, Math.floor(state.players.length / 2));
-    const minTables = Math.max(1, Math.ceil(state.players.length / 4));
+    const minTables = 1;
     if (state.tableCount > maxTables) state.tableCount = maxTables;
     if (state.tableCount < minTables) state.tableCount = minTables;
 
@@ -745,6 +746,15 @@
           </div>
         </div>
 
+        <div class="mb-6">
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" ${state.allow2v1 ? 'checked' : ''}
+              onchange="toggle2v1()"
+              class="w-4 h-4 rounded border-gray-600 bg-gray-700 accent-blue-500">
+            <span class="text-sm text-gray-300">Allow 2v1 format</span>
+          </label>
+        </div>
+
         <button onclick="generate()" ${state.players.length < 2 ? 'disabled' : ''}
           class="w-full py-3 rounded-xl text-white font-bold text-base ${state.players.length < 2 ? 'opacity-40 cursor-not-allowed' : 'hover:opacity-90 cursor-pointer'}"
           style="background: linear-gradient(135deg, #3498db, #2ecc71);">
@@ -770,10 +780,14 @@
   function getSummaryText() {
     const n = state.players.length;
     if (n < 2) return 'Add at least 2 players to generate';
-    const formats = decideTableFormats(n, state.tableCount);
+    const formats = decideTableFormats(n, state.tableCount, state.allow2v1);
+    const capacity = formats.reduce((a, b) => a + b, 0);
+    const sitOuts = n - capacity;
     const types = formats.map(f => f === 4 ? 'doubles' : f === 3 ? '2v1' : 'singles');
     const unique = [...new Set(types)].join(' + ');
-    return `${n} players × ${formats.length} table${formats.length > 1 ? 's' : ''} → ${unique}`;
+    let text = `${n} players × ${formats.length} table${formats.length > 1 ? 's' : ''} → ${unique}`;
+    if (sitOuts > 0) text += ` (${sitOuts} sit out per round)`;
+    return text;
   }
 
   // ===== Render: Schedule View =====
@@ -853,7 +867,7 @@
 
   function changeTableCount(delta) {
     const maxTables = Math.max(1, Math.floor(state.players.length / 2));
-    const minTables = Math.max(1, Math.ceil(state.players.length / 4));
+    const minTables = 1;
     state.tableCount = Math.max(minTables, Math.min(maxTables, state.tableCount + delta));
     renderSetup();
   }
@@ -871,7 +885,7 @@
 
     // Defer to next frame so UI updates before heavy computation
     setTimeout(() => {
-      state.rounds = generateSchedule(state.players, state.tableCount);
+      state.rounds = generateSchedule(state.players, state.tableCount, state.allow2v1);
       state.currentView = 'schedule';
       state.currentRound = 0;
       renderSchedule();
@@ -887,6 +901,11 @@
     state.currentView = 'setup';
     state.rounds = [];
     state.currentRound = 0;
+    renderSetup();
+  }
+
+  function toggle2v1() {
+    state.allow2v1 = !state.allow2v1;
     renderSetup();
   }
 

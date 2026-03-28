@@ -61,7 +61,7 @@ snapshot_line() {
 # Reset app to fresh setup state (clears players, rounds, etc.)
 # After eval that modifies DOM, snapshot must run to re-index refs.
 reset_app() {
-  agent-browser eval "state.players = []; state.tableCount = 1; state.rounds = []; state.currentView = 'setup'; state.currentRound = 0; nextColorIndex = 0; renderSetup();" >/dev/null 2>&1
+  agent-browser eval "state.players = []; state.tableCount = 1; state.rounds = []; state.currentView = 'setup'; state.currentRound = 0; state.allow2v1 = true; nextColorIndex = 0; renderSetup();" >/dev/null 2>&1
   agent-browser snapshot >/dev/null 2>&1
 }
 
@@ -138,12 +138,12 @@ assert_snapshot_contains "- disabled at min (1)" 'button "−" \[disabled'
 # Test: Add 5th player — min tables should become 2
 fill_ref e2 "Eve"
 click_ref e3
-assert_snapshot_contains "5 players: min tables is 2, count auto-clamped" '"2 / 2"'
-assert_snapshot_contains "both buttons disabled when min=max" 'button "−" \[disabled'
+assert_snapshot_contains "5 players: table count stays at 1, max is 2" '"1 / 2"'
+assert_snapshot_contains "minus disabled at min=1" 'button "−" \[disabled'
 
 # Test: Remove a player — back to 4
-click_ref e11
-assert_snapshot_contains "after removing Eve, back to 4 players, table count preserved" '"2 / 2"'
+click_ref e12
+assert_snapshot_contains "after removing Eve, back to 4 players, table count preserved" '"1 / 2"'
 assert_snapshot_not_contains "Eve removed from pills" "Eve"
 
 echo ""
@@ -151,7 +151,7 @@ echo "=== Schedule View Tests ==="
 
 # Set 2 tables and generate
 click_ref e5
-click_ref e6
+click_ref e7
 assert_snapshot_contains "schedule view shows round cards" "Round 1"
 assert_snapshot_contains "schedule view shows Edit Players button" "Edit Players"
 assert_snapshot_contains "schedule shows round status" "Round 1 of"
@@ -170,7 +170,7 @@ echo ""
 echo "=== Round Navigation Tests ==="
 
 # Re-generate schedule for round nav tests
-click_ref e6
+click_ref e7
 assert_snapshot_contains "Next Round button exists" "Next Round"
 
 # Click Next Round
@@ -215,12 +215,13 @@ click_ref e3
 fill_ref e2 "Foxtrot"
 click_ref e3
 
-# Increase tables to max (e5 = + button): 6 players -> min 2, max 3
+# Increase tables to max (e5 = + button): 6 players -> min 1, max 3
+click_ref e5
 click_ref e5
 assert_snapshot_contains "6p/3t: table count is 3" '"3 / 3"'
 
-# Generate schedule (e6 = Generate button)
-click_ref e6
+# Generate schedule (e7 = Generate button)
+click_ref e7
 assert_snapshot_contains "6p/3t: all tables show SINGLES" "SINGLES"
 assert_snapshot_not_contains "6p/3t: no doubles tables" "DOUBLES"
 
@@ -241,7 +242,7 @@ click_ref e3
 fill_ref e2 "P4"
 click_ref e3
 
-click_ref e6
+click_ref e7
 assert_snapshot_contains "4p/1t: table shows DOUBLES" "DOUBLES"
 assert_snapshot_contains "4p/1t: shows 4 players in summary" "4 players"
 
