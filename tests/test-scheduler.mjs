@@ -425,6 +425,32 @@ function allTests() {
     assert.ok(diff <= 1, `Sit-out fairness: max-min=${diff}, counts=${JSON.stringify(sitCounts)}`);
   });
 
+  test('sit-out: rotation is fair with odd divisor (7p/1t, 3 sit out)', (S) => {
+    const players = Array.from({ length: 7 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 1, true);
+    const sitCounts = {};
+    for (const p of players) sitCounts[p.name] = 0;
+    for (const round of rounds) {
+      for (const p of round.sittingOut) sitCounts[p.name]++;
+    }
+    const counts = Object.values(sitCounts);
+    const diff = Math.max(...counts) - Math.min(...counts);
+    assert.ok(diff <= 1, `Sit-out fairness 7p/1t: max-min=${diff}, counts=${JSON.stringify(sitCounts)}`);
+  });
+
+  test('sit-out: rotation is fair with many players few tables (14p/2t, 6 sit out)', (S) => {
+    const players = Array.from({ length: 14 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2, true);
+    const sitCounts = {};
+    for (const p of players) sitCounts[p.name] = 0;
+    for (const round of rounds) {
+      for (const p of round.sittingOut) sitCounts[p.name]++;
+    }
+    const counts = Object.values(sitCounts);
+    const diff = Math.max(...counts) - Math.min(...counts);
+    assert.ok(diff <= 1, `Sit-out fairness 14p/2t: max-min=${diff}, counts=${JSON.stringify(sitCounts)}`);
+  });
+
   test('sit-out: no sit-outs when capacity >= players', (S) => {
     const players = Array.from({ length: 4 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
     const rounds = S.generateSchedule(players, 2, true);
@@ -489,7 +515,7 @@ function allTests() {
   test('partner coverage: round cap prevents explosion (9p/4t)', (S) => {
     const players = Array.from({ length: 9 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
     const rounds = S.generateSchedule(players, 4);
-    assert.ok(rounds.length <= 20, `should not exceed 20 rounds: got ${rounds.length}`);
+    assert.ok(rounds.length <= 40, `should not exceed 40 rounds: got ${rounds.length}`);
   });
 
   test('partner coverage: sit-out path extends for partners (6p/1t)', (S) => {
@@ -512,6 +538,87 @@ function allTests() {
     const rounds = S.generateSchedule(players, 2, false);
     // 5p/2t allow2v1=false → [2,2] with 1 sit-out, no partnerships possible
     assert.ok(rounds.length <= 12, `should not over-generate when no partner formats: got ${rounds.length}`);
+  });
+
+  // --- Solo streak fairness (solo rotation prevents consecutive solo play) ---
+
+  // Helper: compute worst solo streak across all players
+  function worstSoloStreak(players, rounds) {
+    const maxStreak = {};
+    const cur = {};
+    for (const p of players) { maxStreak[p.name] = 0; cur[p.name] = 0; }
+    for (const round of rounds) {
+      const partnered = new Set();
+      for (const t of round.tables)
+        for (const side of [t.sideA, t.sideB])
+          if (side.length >= 2) for (const p of side) partnered.add(p.name);
+      for (const p of players) {
+        if (!partnered.has(p.name)) {
+          cur[p.name]++;
+          maxStreak[p.name] = Math.max(maxStreak[p.name], cur[p.name]);
+        } else {
+          cur[p.name] = 0;
+        }
+      }
+    }
+    return Math.max(...Object.values(maxStreak));
+  }
+
+  test('solo streak: 5p/2t — worst solo streak ≤ 4 (avg over 5 trials)', (S) => {
+    let totalWorst = 0;
+    for (let t = 0; t < 5; t++) {
+      const players = Array.from({ length: 5 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+      const rounds = S.generateSchedule(players, 2);
+      totalWorst += worstSoloStreak(players, rounds);
+    }
+    const avg = totalWorst / 5;
+    assert.ok(avg <= 4, `avg worst solo streak should be ≤ 4, got ${avg}`);
+  });
+
+  test('solo streak: 6p/2t — worst solo streak ≤ 3', (S) => {
+    let totalWorst = 0;
+    for (let t = 0; t < 5; t++) {
+      const players = Array.from({ length: 6 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+      const rounds = S.generateSchedule(players, 2);
+      totalWorst += worstSoloStreak(players, rounds);
+    }
+    const avg = totalWorst / 5;
+    assert.ok(avg <= 3, `avg worst solo streak should be ≤ 3, got ${avg}`);
+  });
+
+  test('solo streak: 7p/2t — worst solo streak ≤ 2', (S) => {
+    let totalWorst = 0;
+    for (let t = 0; t < 5; t++) {
+      const players = Array.from({ length: 7 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+      const rounds = S.generateSchedule(players, 2);
+      totalWorst += worstSoloStreak(players, rounds);
+    }
+    const avg = totalWorst / 5;
+    assert.ok(avg <= 2, `avg worst solo streak should be ≤ 2, got ${avg}`);
+  });
+
+  test('solo streak: all-doubles (8p/2t) — streak is 0 (everyone always partnered)', (S) => {
+    const players = Array.from({ length: 8 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2);
+    assert.strictEqual(worstSoloStreak(players, rounds), 0);
+  });
+
+  test('solo streak: does not degrade opponent coverage (5p/2t)', (S) => {
+    const players = Array.from({ length: 5 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2);
+    const n = 5;
+    const met = Array.from({ length: n }, () => Array(n).fill(false));
+    for (const round of rounds)
+      for (const table of round.tables)
+        for (const a of table.sideA) for (const b of table.sideB) {
+          met[players.indexOf(a)][players.indexOf(b)] = true;
+          met[players.indexOf(b)][players.indexOf(a)] = true;
+        }
+    let unmet = 0;
+    for (let i = 0; i < n; i++)
+      for (let j = i + 1; j < n; j++)
+        if (!met[i][j]) unmet++;
+    assert.strictEqual(unmet, 0, 'all opponent pairs should still be covered');
   });
 
   // --- Integration: allow2v1=false with sit-outs ---
@@ -550,6 +657,95 @@ function allTests() {
         }
       }
     }
+  });
+
+  // --- analyseSchedule tests ---
+
+  test('analyseSchedule: returns correct structure and strategy for all-singles', (S) => {
+    const players = Array.from({ length: 4 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2, true);
+    const stats = S.analyseSchedule(players, rounds);
+    assert.strictEqual(typeof stats.strategy, 'string');
+    assert.strictEqual(typeof stats.roundCount, 'number');
+    assert.strictEqual(stats.roundCount, rounds.length);
+    assert.ok(stats.stoppedReason, 'should have a stopped reason');
+    assert.ok(stats.opponent, 'should have opponent stats');
+    assert.strictEqual(stats.opponent.total, 6); // C(4,2) = 6
+    assert.ok(stats.opponent.pct >= 0 && stats.opponent.pct <= 100);
+    assert.strictEqual(stats.partner, null, '4p/2t all-singles has no partner stats');
+    assert.ok(stats.fairness, 'should have fairness stats');
+    assert.strictEqual(stats.notes instanceof Array, true);
+  });
+
+  test('analyseSchedule: opponent coverage is 100% for completed schedule', (S) => {
+    const players = Array.from({ length: 6 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 3, true);
+    const stats = S.analyseSchedule(players, rounds);
+    assert.strictEqual(stats.opponent.pct, 100, 'all opponent pairs should be covered');
+    assert.strictEqual(stats.opponent.covered, stats.opponent.total);
+  });
+
+  test('analyseSchedule: partner stats present for doubles/2v1 formats', (S) => {
+    const players = Array.from({ length: 5 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2, true);
+    const stats = S.analyseSchedule(players, rounds);
+    assert.ok(stats.partner !== null, '5p/2t should have partner stats');
+    assert.strictEqual(stats.partner.total, 10); // C(5,2) = 10
+    assert.ok(stats.partner.pct >= 0 && stats.partner.pct <= 100);
+    assert.ok(Array.isArray(stats.partner.repeats));
+  });
+
+  test('analyseSchedule: sit-out fairness tracked correctly', (S) => {
+    const players = Array.from({ length: 7 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 1, true);
+    const stats = S.analyseSchedule(players, rounds);
+    assert.ok(stats.fairness.sitMax > 0, '7p/1t should have sit-outs');
+    assert.ok(stats.fairness.sitSpread <= 1, `Sit-out spread should be <= 1, got ${stats.fairness.sitSpread}`);
+    assert.strictEqual(stats.fairness.sitOutPerPlayer.length, 7);
+    assert.strictEqual(stats.fairness.gamesPerPlayer.length, 7);
+  });
+
+  test('analyseSchedule: strategy label describes method used', (S) => {
+    // All-singles with 4p/2t → round-robin
+    const p4 = Array.from({ length: 4 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const r4 = S.generateSchedule(p4, 2, true);
+    const s4 = S.analyseSchedule(p4, r4);
+    assert.ok(s4.strategy.includes('round-robin') || s4.strategy.includes('Optimal'),
+      `4p/2t should be round-robin, got: ${s4.strategy}`);
+
+    // 7p/1t with sit-outs → greedy with sit-out rotation
+    const p7 = Array.from({ length: 7 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const r7 = S.generateSchedule(p7, 1, true);
+    const s7 = S.analyseSchedule(p7, r7);
+    assert.ok(s7.strategy.includes('sit-out'),
+      `7p/1t should mention sit-out rotation, got: ${s7.strategy}`);
+  });
+
+  test('analyseSchedule: notes flag imperfections correctly', (S) => {
+    // A config that produces a perfect schedule should have no notes about missing coverage
+    const players = Array.from({ length: 4 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2, true);
+    const stats = S.analyseSchedule(players, rounds);
+    const missingOpp = stats.notes.filter(n => n.includes('opponent'));
+    assert.strictEqual(missingOpp.length, 0, '4p/2t should have full opponent coverage, no notes');
+  });
+
+  test('analyseSchedule: solo streak tracked', (S) => {
+    const players = Array.from({ length: 5 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2, true);
+    const stats = S.analyseSchedule(players, rounds);
+    assert.strictEqual(typeof stats.fairness.maxSoloStreak, 'number');
+    assert.ok(stats.fairness.maxSoloStreak >= 0);
+    assert.strictEqual(stats.fairness.soloPerPlayer.length, 5);
+  });
+
+  test('analyseSchedule: games per player has correct spread', (S) => {
+    const players = Array.from({ length: 8 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2, true);
+    const stats = S.analyseSchedule(players, rounds);
+    // All players active (no sit-outs for 8p/2t), so all should play the same number of games
+    assert.strictEqual(stats.fairness.gamesMin, stats.fairness.gamesMax,
+      `8p/2t: all players should play same games, got ${stats.fairness.gamesMin}-${stats.fairness.gamesMax}`);
   });
 
   return tests;

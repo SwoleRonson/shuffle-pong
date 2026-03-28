@@ -14,9 +14,10 @@
       padding: 4px 12px;
       border-radius: 20px;
       font-size: 14px;
+      font-weight: 600;
       color: white;
       cursor: default;
-      min-width: 56px;
+      min-width: 72px;
     }
     .pill button {
       background: none;
@@ -44,9 +45,9 @@
   // ===== Scheduler Module =====
 
   const PALETTE = [
-    '#e74c3c', '#3498db', '#2ecc71', '#9b59b6', '#e67e22',
-    '#1abc9c', '#2980b9', '#d35400', '#8e44ad', '#27ae60',
-    '#c0392b', '#16a085', '#1a5276', '#a93226'
+    '#c0392b', '#2874a6', '#1e8449', '#8e44ad', '#c44900',
+    '#0b7285', '#c7254e', '#7d6608', '#2e4da7', '#a83279',
+    '#117a65', '#5b3daf', '#4a7c10', '#982d6b'
   ];
 
   /**
@@ -204,16 +205,17 @@
    * For small groups (≤10 players): enumerates all partitions and picks the best.
    * For larger groups: uses greedy assignment with multiple random orderings.
    */
-  function assignRound(players, formats, opponentMatrix, partnerMatrix) {
+  function assignRound(players, formats, opponentMatrix, partnerMatrix, soloCount) {
     const sortedFormats = [...formats].sort((a, b) => b - a);
+    const sc = soloCount || Array(players.length).fill(0);
 
     if (players.length <= 8) {
-      return assignRoundExhaustive(players, sortedFormats, opponentMatrix, partnerMatrix);
+      return assignRoundExhaustive(players, sortedFormats, opponentMatrix, partnerMatrix, sc);
     }
-    return assignRoundGreedy(players, sortedFormats, opponentMatrix, partnerMatrix);
+    return assignRoundGreedy(players, sortedFormats, opponentMatrix, partnerMatrix, sc);
   }
 
-  function assignRoundExhaustive(players, sortedFormats, opponentMatrix, partnerMatrix) {
+  function assignRoundExhaustive(players, sortedFormats, opponentMatrix, partnerMatrix, soloCount) {
     const allPartitions = partitions([...players], sortedFormats, players);
 
     // Collect all tied-best partitions and pick randomly among them
@@ -223,6 +225,7 @@
     for (const partition of allPartitions) {
       let roundOppCost = 0;
       let roundPartCost = 0;
+      let roundSoloCost = 0;
       const splits = [];
 
       for (let i = 0; i < partition.length; i++) {
@@ -232,10 +235,12 @@
         splits.push(split);
         roundOppCost += split.oppCost;
         roundPartCost += split.partCost;
+        for (const side of [split.sideA, split.sideB])
+          if (side.length === 1) roundSoloCost += soloCount[players.indexOf(side[0])];
       }
 
-      // Combined opponent + partner cost (equal weight)
-      const score = roundOppCost + roundPartCost;
+      // Combined opponent + partner + solo cost (equal weight)
+      const score = roundOppCost + roundPartCost + roundSoloCost;
       const roundData = splits.map((split, i) => ({
         format: sortedFormats[i] === 4 ? 'doubles' : sortedFormats[i] === 3 ? '2v1' : 'singles',
         sideA: split.sideA,
@@ -253,7 +258,7 @@
     return { tables: bestRounds[Math.floor(Math.random() * bestRounds.length)] };
   }
 
-  function assignRoundGreedy(players, sortedFormats, opponentMatrix, partnerMatrix) {
+  function assignRoundGreedy(players, sortedFormats, opponentMatrix, partnerMatrix, soloCount) {
     // Try multiple random orderings and pick the best overall round
     let bestRound = null;
     let bestScore = Infinity;
@@ -270,6 +275,7 @@
       const remaining = [...pool];
       let roundOppCost = 0;
       let roundPartCost = 0;
+      let roundSoloCost = 0;
 
       for (const format of sortedFormats) {
         const candidates = combinations(remaining, format);
@@ -278,10 +284,13 @@
 
         for (const group of candidates) {
           const split = bestSplit(group, format, players, opponentMatrix, partnerMatrix);
-          const tableScore = split.oppCost + split.partCost;
+          let sc = 0;
+          for (const side of [split.sideA, split.sideB])
+            if (side.length === 1) sc += soloCount[players.indexOf(side[0])];
+          const tableScore = split.oppCost + split.partCost + sc;
           if (tableScore < bestTableScore) {
             bestTableScore = tableScore;
-            bestTable = { ...split, format };
+            bestTable = { ...split, format, soloCost: sc };
           }
         }
 
@@ -289,13 +298,14 @@
         tables.push({ format: formatLabel, sideA: bestTable.sideA, sideB: bestTable.sideB });
         roundOppCost += bestTable.oppCost;
         roundPartCost += bestTable.partCost;
+        roundSoloCost += bestTable.soloCost;
 
         for (const p of [...bestTable.sideA, ...bestTable.sideB]) {
           remaining.splice(remaining.indexOf(p), 1);
         }
       }
 
-      const score = roundOppCost + roundPartCost;
+      const score = roundOppCost + roundPartCost + roundSoloCost;
       if (score < bestScore) {
         bestScore = score;
         bestRound = tables;
@@ -359,7 +369,7 @@
     const schedule = [];
 
     // Determine stopping condition
-    const maxRounds = 20;
+    const maxRounds = 40;
 
     for (let ri = 0; ri < Math.min(rrRounds.length, maxRounds); ri++) {
       let pairs = rrRounds[ri];
@@ -502,15 +512,16 @@
    */
   function generateScheduleFullField(players, formats) {
     const n = players.length;
-    const maxRounds = 20;
+    const maxRounds = 40;
 
     function generateCandidate() {
       const opp = Array.from({ length: n }, () => Array(n).fill(0));
       const par = Array.from({ length: n }, () => Array(n).fill(0));
+      const solo = Array(n).fill(0);
       const rounds = [];
 
       while (rounds.length < maxRounds) {
-        const round = assignRound(players, formats, opp, par);
+        const round = assignRound(players, formats, opp, par, solo);
         rounds.push(round);
 
         for (const table of round.tables) {
@@ -524,6 +535,7 @@
                 par[players.indexOf(side[i])][players.indexOf(side[j])]++;
                 par[players.indexOf(side[j])][players.indexOf(side[i])]++;
               }
+            if (side.length === 1) solo[players.indexOf(side[0])]++;
           }
         }
 
@@ -628,7 +640,7 @@
     const formats = decideTableFormats(n, tableCount, allow2v1);
     const capacity = formats.reduce((a, b) => a + b, 0);
     const sitOutCount = n - capacity;
-    const maxRounds = 20;
+    const maxRounds = 40;
 
     if (sitOutCount <= 0) {
       return generateScheduleFullField(players, formats);
@@ -637,26 +649,31 @@
     // Sit-out mode: build rounds one at a time, rotating who sits out
     const opp = Array.from({ length: n }, () => Array(n).fill(0));
     const par = Array.from({ length: n }, () => Array(n).fill(0));
+    const solo = Array(n).fill(0);
     const sitCounts = Array(n).fill(0);
+    const lastSatOut = Array(n).fill(-1);
     const rounds = [];
 
     while (rounds.length < maxRounds) {
-      // Pick sit-out players: those with fewest sit-outs, break ties randomly
+      // Pick sit-out players: fewest sit-outs first, then longest since last sit-out
       const indices = Array.from({ length: n }, (_, i) => i);
-      shuffleArray(indices);
-      indices.sort((a, b) => sitCounts[a] - sitCounts[b]);
+      indices.sort((a, b) => sitCounts[a] - sitCounts[b] || lastSatOut[a] - lastSatOut[b]);
       const benchIndices = indices.slice(0, sitOutCount);
       const activeIndices = indices.slice(sitOutCount);
 
       const activePlayers = activeIndices.map(i => players[i]);
       const benchPlayers = benchIndices.map(i => players[i]);
-      for (const bi of benchIndices) sitCounts[bi]++;
+      for (const bi of benchIndices) {
+        sitCounts[bi]++;
+        lastSatOut[bi] = rounds.length;
+      }
 
       // Build sub-matrices for active players (indexed into full matrix)
       const subOpp = activeIndices.map(i => activeIndices.map(j => opp[i][j]));
       const subPar = activeIndices.map(i => activeIndices.map(j => par[i][j]));
+      const subSolo = activeIndices.map(i => solo[i]);
 
-      const round = assignRound(activePlayers, formats, subOpp, subPar);
+      const round = assignRound(activePlayers, formats, subOpp, subPar, subSolo);
       round.sittingOut = benchPlayers;
       rounds.push(round);
 
@@ -667,13 +684,15 @@
           const bi = players.indexOf(b);
           opp[ai][bi]++; opp[bi][ai]++;
         }
-        for (const side of [table.sideA, table.sideB])
+        for (const side of [table.sideA, table.sideB]) {
           for (let i = 0; i < side.length; i++)
             for (let j = i + 1; j < side.length; j++) {
               const ai = players.indexOf(side[i]);
               const bi = players.indexOf(side[j]);
               par[ai][bi]++; par[bi][ai]++;
             }
+          if (side.length === 1) solo[players.indexOf(side[0])]++;
+        }
       }
 
       // Check if all pairs have met as opponents and partners
@@ -696,9 +715,152 @@
     return rounds;
   }
 
+  /**
+   * Analyse a generated schedule and return quality metrics for debug display.
+   */
+  function analyseSchedule(players, rounds) {
+    const n = players.length;
+    const opp = Array.from({ length: n }, () => Array(n).fill(0));
+    const par = Array.from({ length: n }, () => Array(n).fill(0));
+    const soloPerPlayer = Array(n).fill(0);
+    const gamesPerPlayer = Array(n).fill(0);
+    const sitOutPerPlayer = Array(n).fill(0);
+
+    for (const round of rounds) {
+      const played = new Set();
+      for (const table of round.tables) {
+        for (const a of table.sideA) for (const b of table.sideB) {
+          const ai = players.indexOf(a), bi = players.indexOf(b);
+          opp[ai][bi]++; opp[bi][ai]++;
+        }
+        for (const side of [table.sideA, table.sideB]) {
+          for (let i = 0; i < side.length; i++) {
+            const pi = players.indexOf(side[i]);
+            played.add(pi);
+            gamesPerPlayer[pi]++;
+            if (side.length === 1) soloPerPlayer[pi]++;
+            for (let j = i + 1; j < side.length; j++) {
+              const qi = players.indexOf(side[j]);
+              par[pi][qi]++; par[qi][pi]++;
+            }
+          }
+        }
+      }
+      for (let i = 0; i < n; i++) {
+        if (!played.has(i)) sitOutPerPlayer[i]++;
+      }
+    }
+
+    // Opponent metrics
+    let oppPairs = 0, oppCovered = 0, oppMaxVal = 0;
+    const oppRepeats = [];
+    for (let i = 0; i < n; i++)
+      for (let j = i + 1; j < n; j++) {
+        oppPairs++;
+        if (opp[i][j] > 0) oppCovered++;
+        oppMaxVal = Math.max(oppMaxVal, opp[i][j]);
+        if (opp[i][j] >= 3) oppRepeats.push({ a: players[i].name, b: players[j].name, count: opp[i][j] });
+      }
+
+    // Partner metrics
+    let parPairs = 0, parCovered = 0, parMaxVal = 0;
+    const parRepeats = [];
+    const hasPartnerFormats = rounds.some(r => r.tables.some(t =>
+      t.sideA.length + t.sideB.length >= 3));
+    if (hasPartnerFormats) {
+      for (let i = 0; i < n; i++)
+        for (let j = i + 1; j < n; j++) {
+          parPairs++;
+          if (par[i][j] > 0) parCovered++;
+          parMaxVal = Math.max(parMaxVal, par[i][j]);
+          if (par[i][j] >= 2) parRepeats.push({ a: players[i].name, b: players[j].name, count: par[i][j] });
+        }
+    }
+
+    // Solo streaks
+    const soloStreaks = Array(n).fill(0);
+    const currentStreak = Array(n).fill(0);
+    for (const round of rounds) {
+      const soloThisRound = new Set();
+      for (const table of round.tables)
+        for (const side of [table.sideA, table.sideB])
+          if (side.length === 1) soloThisRound.add(players.indexOf(side[0]));
+      for (let i = 0; i < n; i++) {
+        const inRound = round.tables.some(t =>
+          [...t.sideA, ...t.sideB].includes(players[i]));
+        if (!inRound) continue;
+        if (soloThisRound.has(i)) {
+          currentStreak[i]++;
+          soloStreaks[i] = Math.max(soloStreaks[i], currentStreak[i]);
+        } else {
+          currentStreak[i] = 0;
+        }
+      }
+    }
+
+    // Detect strategy
+    const formats = rounds[0]?.tables.map(t => t.sideA.length + t.sideB.length) || [];
+    const allDoubles = formats.every(f => f === 4) && n % 2 === 0;
+    const allSingles = formats.every(f => f === 2);
+    const hasSitOuts = rounds.some(r => r.sittingOut && r.sittingOut.length > 0);
+
+    let strategy;
+    if (hasSitOuts) {
+      strategy = 'Greedy with sit-out rotation';
+    } else if ((allDoubles && formats.length >= 3) || allSingles) {
+      strategy = 'Optimal (round-robin, unique pairings guaranteed)';
+    } else {
+      strategy = 'Best of N candidates (15s search)';
+    }
+
+    // Stopping reason
+    const oppFull = oppCovered === oppPairs;
+    const parFull = !hasPartnerFormats || parCovered === parPairs;
+    let stoppedReason;
+    if (rounds.length >= 40) {
+      stoppedReason = 'Hit 40-round cap';
+    } else if (oppFull && parFull) {
+      stoppedReason = 'All pairs covered';
+    } else {
+      stoppedReason = 'All pairs covered';
+    }
+
+    // Imperfections
+    const notes = [];
+    if (!oppFull) notes.push(`${oppPairs - oppCovered} opponent pair${oppPairs - oppCovered > 1 ? 's' : ''} never met`);
+    if (hasPartnerFormats && !parFull) notes.push(`${parPairs - parCovered} partner pair${parPairs - parCovered > 1 ? 's' : ''} never teamed up`);
+    if (parRepeats.length > 0) notes.push(`${parRepeats.length} partner pairing${parRepeats.length > 1 ? 's' : ''} repeated (unavoidable for this config)`);
+    if (oppMaxVal >= 4) notes.push(`Some opponents faced each other ${oppMaxVal} times`);
+
+    const sitMin = Math.min(...sitOutPerPlayer);
+    const sitMax = Math.max(...sitOutPerPlayer);
+    const gamesMin = Math.min(...gamesPerPlayer);
+    const gamesMax = Math.max(...gamesPerPlayer);
+
+    return {
+      strategy,
+      roundCount: rounds.length,
+      stoppedReason,
+      formatDesc: [...new Set(formats.map(f => f === 4 ? 'doubles' : f === 3 ? '2v1' : 'singles'))].join(' + '),
+      opponent: { covered: oppCovered, total: oppPairs, pct: Math.round(oppCovered / oppPairs * 100), max: oppMaxVal, repeats: oppRepeats },
+      partner: hasPartnerFormats
+        ? { covered: parCovered, total: parPairs, pct: Math.round(parCovered / parPairs * 100), max: parMaxVal, repeats: parRepeats }
+        : null,
+      fairness: {
+        gamesMin, gamesMax,
+        sitMin, sitMax, sitSpread: sitMax - sitMin,
+        soloPerPlayer: players.map((p, i) => ({ name: p.name, solo: soloPerPlayer[i] })),
+        maxSoloStreak: Math.max(...soloStreaks, 0),
+        sitOutPerPlayer: players.map((p, i) => ({ name: p.name, sitOuts: sitOutPerPlayer[i] })),
+        gamesPerPlayer: players.map((p, i) => ({ name: p.name, games: gamesPerPlayer[i] }))
+      },
+      notes
+    };
+  }
+
   // Expose for testing
   if (typeof globalThis !== 'undefined') {
-    globalThis.Scheduler = { decideTableFormats, assignRound, generateSchedule, generateScheduleFullField, shuffleArray };
+    globalThis.Scheduler = { decideTableFormats, assignRound, generateSchedule, generateScheduleFullField, shuffleArray, analyseSchedule, PALETTE };
   }
 
   // ===== App State =====
@@ -712,8 +874,14 @@
     currentView: 'setup',
     currentRound: 0,
     allow2v1: true,
-    showAllRounds: false
+    showAllRounds: false,
+    debugStats: null,
+    showDebug: false
   };
+
+  function isDebugMode() {
+    return typeof location !== 'undefined' && new URLSearchParams(location.search).has('debug');
+  }
 
   // ===== Render: Setup View =====
 
@@ -728,7 +896,7 @@
       <div class="max-w-lg mx-auto px-4 py-8">
         <div class="text-center mb-8">
           <h1 class="text-2xl font-bold text-white">Shuffle Pong</h1>
-          <p class="text-gray-500 text-sm">Table Tennis Group Scheduler</p>
+          <p class="text-gray-400 text-sm">Table Tennis Group Scheduler</p>
         </div>
 
         <div class="mb-6">
@@ -749,7 +917,7 @@
             <button onclick="addPlayer()"
               class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500">Add</button>
           </div>
-          <p class="text-gray-500 text-xs mt-1">Press Enter to add, click &times; to remove</p>
+          <p class="text-gray-400 text-xs mt-1">Press Enter to add, click &times; to remove</p>
         </div>
 
         <div class="mb-6">
@@ -780,7 +948,7 @@
           Generate Schedule →
         </button>
 
-        <p class="text-center text-gray-500 text-xs mt-2">${getSummaryText()}</p>
+        <p class="text-center text-gray-400 text-xs mt-2">${getSummaryText()}</p>
       </div>
     `;
 
@@ -824,7 +992,7 @@
             style="background: #16213e;">← Edit Players</button>
         </div>
 
-        <p class="text-gray-500 text-sm mb-4">
+        <p class="text-gray-300 text-sm mb-4">
           ${state.players.length} players · ${state.rounds[0]?.tables.length || 0} table${(state.rounds[0]?.tables.length || 0) > 1 ? 's' : ''} · Round ${state.currentRound + 1} of ${roundCount}
         </p>
 
@@ -852,7 +1020,7 @@
             </div>
             ${round.tables.map((table, ti) => `
               <div class="${ti < round.tables.length - 1 ? 'mb-4' : ''}">
-                <div class="text-xs text-gray-400 uppercase tracking-wider mb-1.5 text-center font-medium">
+                <div class="text-xs text-gray-300 uppercase tracking-wider mb-1.5 text-center font-medium">
                   Table ${ti + 1}
                 </div>
                 <div class="flex items-center">
@@ -863,7 +1031,7 @@
                       </span>
                     `).join('')}
                   </div>
-                  <span class="text-gray-400 font-bold text-sm mx-3">vs</span>
+                  <span class="text-gray-300 font-bold text-sm mx-3">vs</span>
                   <div class="flex flex-col gap-1 items-start flex-1">
                     ${table.sideB.map(p => `
                       <span class="pill" style="background: ${PALETTE[p.colorIndex % PALETTE.length]}; font-size: 13px; padding: 2px 10px;">
@@ -876,10 +1044,10 @@
             `).join('')}
             ${(round.sittingOut && round.sittingOut.length > 0) ? `
               <div class="mt-3 pt-3 border-t border-gray-700 text-center">
-                <span class="text-xs text-gray-400 uppercase tracking-wider">Sitting out</span>
+                <span class="text-xs text-gray-300 uppercase tracking-wider">Sitting out</span>
                 <div class="flex flex-wrap gap-1.5 mt-1.5 justify-center">
                   ${round.sittingOut.map(p => `
-                    <span class="pill" style="background: ${PALETTE[p.colorIndex % PALETTE.length]}; font-size: 12px; padding: 2px 8px; opacity: 0.5;">
+                    <span class="pill" style="background: ${PALETTE[p.colorIndex % PALETTE.length]}; font-size: 12px; padding: 2px 8px; opacity: 0.6;">
                       ${escapeHtml(p.name)}
                     </span>
                   `).join('')}
@@ -888,6 +1056,15 @@
             ` : ''}
           </div>
         `}).join('')}
+
+        ${state.debugStats ? `
+          <button onclick="toggleDebug()"
+            class="w-full py-1.5 text-xs text-gray-400 hover:text-gray-300 cursor-pointer"
+            style="background: none; border: none;">
+            ${state.showDebug ? '▾ Hide Debug' : '▸ Show Debug'}
+          </button>
+          ${state.showDebug ? renderDebugPanel(state.debugStats) : ''}
+        ` : ''}
       </div>
     `;
   }
@@ -897,17 +1074,31 @@
   function updateURL() {
     const names = state.players.map(p => p.name);
     const hash = names.length ? '#' + names.map(n => encodeURIComponent(n)).join(',') : '';
-    history.replaceState(null, '', location.pathname + location.search + hash);
+    const params = new URLSearchParams();
+    if (isDebugMode()) params.set('debug', '');
+    if (state.tableCount !== 1) params.set('tables', state.tableCount);
+    if (!state.allow2v1) params.set('allow2v1', 'false');
+    const search = params.toString() ? '?' + params.toString() : '';
+    history.replaceState(null, '', location.pathname + search + hash);
   }
 
   function loadPlayersFromURL() {
     const hash = location.hash.slice(1);
-    if (!hash) return;
-    const names = hash.split(',').map(n => decodeURIComponent(n)).filter(Boolean);
-    for (const name of names) {
-      if (state.players.length >= 14) break;
-      if (state.players.some(p => p.name.toLowerCase() === name.toLowerCase())) continue;
-      state.players.push({ name, colorIndex: nextColorIndex++ });
+    if (hash) {
+      const names = hash.split(',').map(n => decodeURIComponent(n)).filter(Boolean);
+      for (const name of names) {
+        if (state.players.length >= 14) break;
+        if (state.players.some(p => p.name.toLowerCase() === name.toLowerCase())) continue;
+        state.players.push({ name, colorIndex: nextColorIndex++ });
+      }
+    }
+    const params = new URLSearchParams(location.search);
+    if (params.has('tables')) {
+      const t = parseInt(params.get('tables'), 10);
+      if (t >= 1 && t <= 7) state.tableCount = t;
+    }
+    if (params.has('allow2v1')) {
+      state.allow2v1 = params.get('allow2v1') !== 'false';
     }
   }
 
@@ -936,6 +1127,7 @@
     const maxTables = Math.max(1, Math.floor(state.players.length / 2));
     const minTables = 1;
     state.tableCount = Math.max(minTables, Math.min(maxTables, state.tableCount + delta));
+    updateURL();
     renderSetup();
   }
 
@@ -957,6 +1149,8 @@
       state.currentView = 'schedule';
       state.currentRound = 0;
       state.showAllRounds = false;
+      state.debugStats = isDebugMode() ? analyseSchedule(state.players, state.rounds) : null;
+      state.showDebug = false;
       renderSchedule();
     }, 20);
   }
@@ -971,7 +1165,10 @@
     state.rounds = [];
     state.currentRound = 0;
     state.showAllRounds = false;
+    state.debugStats = null;
+    state.showDebug = false;
     renderSetup();
+    updateURL();
   }
 
   function toggleAllRounds() {
@@ -981,7 +1178,68 @@
 
   function toggle2v1() {
     state.allow2v1 = !state.allow2v1;
+    updateURL();
     renderSetup();
+  }
+
+  function toggleDebug() {
+    state.showDebug = !state.showDebug;
+    renderSchedule();
+  }
+
+  function renderDebugPanel(stats) {
+    if (!stats) return '';
+
+    const oppPct = stats.opponent.pct;
+    const parSection = stats.partner
+      ? `<div class="flex justify-between"><span class="text-gray-400">Partner coverage</span><span class="${stats.partner.pct === 100 ? 'text-green-400' : 'text-yellow-400'}">${stats.partner.covered}/${stats.partner.total} (${stats.partner.pct}%)</span></div>
+         <div class="flex justify-between"><span class="text-gray-400">Max partner repeats</span><span class="${stats.partner.max <= 1 ? 'text-green-400' : 'text-yellow-400'}">${stats.partner.max}</span></div>
+         ${stats.partner.repeats.length > 0 ? `<div class="text-xs text-yellow-400/70 ml-2">${stats.partner.repeats.map(r => `${r.a} + ${r.b} (${r.count}×)`).join(', ')}</div>` : ''}`
+      : '<div class="flex justify-between"><span class="text-gray-400">Partner coverage</span><span class="text-gray-400">n/a (all singles)</span></div>';
+
+    const sitSection = stats.fairness.sitMax > 0
+      ? `<div class="flex justify-between"><span class="text-gray-400">Sit-outs per player</span><span class="${stats.fairness.sitSpread <= 1 ? 'text-green-400' : 'text-yellow-400'}">${stats.fairness.sitMin}–${stats.fairness.sitMax} (spread ${stats.fairness.sitSpread})</span></div>
+         <div class="text-xs text-gray-400 ml-2">${stats.fairness.sitOutPerPlayer.filter(p => p.sitOuts > 0).map(p => `${p.name}: ${p.sitOuts}`).join(', ')}</div>`
+      : '<div class="flex justify-between"><span class="text-gray-400">Sit-outs</span><span class="text-green-400">None</span></div>';
+
+    const notesSection = stats.notes.length > 0
+      ? `<div class="mt-2 pt-2 border-t border-yellow-400/20">
+           <div class="text-xs font-medium text-yellow-400 mb-1">Imperfections</div>
+           ${stats.notes.map(n => `<div class="text-xs text-yellow-400/70">• ${n}</div>`).join('')}
+         </div>`
+      : `<div class="mt-2 pt-2 border-t border-green-400/20">
+           <div class="text-xs text-green-400">Perfect schedule — no compromises needed</div>
+         </div>`;
+
+    return `
+      <div class="card" style="border: 1px solid #333; background: #111827;">
+        <div class="text-xs font-bold text-gray-300 uppercase tracking-wider mb-3">Schedule Debug</div>
+
+        <div class="space-y-1 text-xs">
+          <div class="flex justify-between"><span class="text-gray-400">Strategy</span><span class="text-blue-400">${stats.strategy}</span></div>
+          <div class="flex justify-between"><span class="text-gray-400">Rounds</span><span class="text-white">${stats.roundCount}</span></div>
+          <div class="flex justify-between"><span class="text-gray-400">Stopped because</span><span class="text-white">${stats.stoppedReason}</span></div>
+          <div class="flex justify-between"><span class="text-gray-400">Format</span><span class="text-white">${stats.formatDesc}</span></div>
+        </div>
+
+        <div class="mt-3 pt-2 border-t border-gray-700 space-y-1 text-xs">
+          <div class="text-gray-300 font-medium mb-1">Coverage</div>
+          <div class="flex justify-between"><span class="text-gray-400">Opponent coverage</span><span class="${oppPct === 100 ? 'text-green-400' : 'text-yellow-400'}">${stats.opponent.covered}/${stats.opponent.total} (${oppPct}%)</span></div>
+          <div class="flex justify-between"><span class="text-gray-400">Max opponent repeats</span><span class="${stats.opponent.max <= 2 ? 'text-green-400' : 'text-yellow-400'}">${stats.opponent.max}</span></div>
+          ${stats.opponent.repeats.length > 0 ? `<div class="text-xs text-yellow-400/70 ml-2">${stats.opponent.repeats.map(r => `${r.a} vs ${r.b} (${r.count}×)`).join(', ')}</div>` : ''}
+          ${parSection}
+        </div>
+
+        <div class="mt-3 pt-2 border-t border-gray-700 space-y-1 text-xs">
+          <div class="text-gray-300 font-medium mb-1">Fairness</div>
+          <div class="flex justify-between"><span class="text-gray-400">Games per player</span><span class="${stats.fairness.gamesMax - stats.fairness.gamesMin <= 1 ? 'text-green-400' : 'text-yellow-400'}">${stats.fairness.gamesMin}–${stats.fairness.gamesMax}</span></div>
+          ${sitSection}
+          <div class="flex justify-between"><span class="text-gray-400">Max solo streak</span><span class="${stats.fairness.maxSoloStreak <= 3 ? 'text-green-400' : 'text-yellow-400'}">${stats.fairness.maxSoloStreak}</span></div>
+        </div>
+
+        ${notesSection}
+      </div>
+    `;
   }
 
   // ===== Init =====
@@ -990,6 +1248,7 @@
     loadPlayersFromURL();
     state._focusInput = true;
     renderSetup();
+    updateURL();
   }
 
   </script>

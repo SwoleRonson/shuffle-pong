@@ -61,7 +61,7 @@ snapshot_line() {
 # Reset app to fresh setup state (clears players, rounds, etc.)
 # After eval that modifies DOM, snapshot must run to re-index refs.
 reset_app() {
-  agent-browser eval "state.players = []; state.tableCount = 1; state.rounds = []; state.currentView = 'setup'; state.currentRound = 0; state.allow2v1 = true; state.showAllRounds = false; nextColorIndex = 0; renderSetup();" >/dev/null 2>&1
+  agent-browser eval "state.players = []; state.tableCount = 1; state.rounds = []; state.currentView = 'setup'; state.currentRound = 0; state.allow2v1 = true; state.showAllRounds = false; nextColorIndex = 0; renderSetup(); updateURL();" >/dev/null 2>&1
   agent-browser snapshot >/dev/null 2>&1
 }
 
@@ -415,6 +415,76 @@ else
   inc FAIL
 fi
 assert_snapshot_contains "still shows 14 players in summary" "14 players"
+
+# ===== URL Persistence Tests =====
+
+echo ""
+echo "--- URL Persistence Tests ---"
+reset_app
+
+# Add 4 players and set table count to 2
+for name in A B C D; do
+  fill_ref e2 "$name"
+  click_ref e3
+done
+click_ref e6  # increment table count to 2
+
+# Test: tables param appears in URL
+url=$(agent-browser eval "location.search" 2>&1)
+if echo "$url" | grep -q "tables=2"; then
+  echo "  PASS: tables=2 in URL after increment"
+  inc PASS
+else
+  echo "  FAIL: tables=2 not in URL (got: $url)"
+  inc FAIL
+fi
+
+# Test: allow2v1 default not in URL
+if echo "$url" | grep -q "allow2v1"; then
+  echo "  FAIL: allow2v1 should not be in URL when default (true)"
+  inc FAIL
+else
+  echo "  PASS: allow2v1 omitted from URL when default"
+  inc PASS
+fi
+
+# Toggle 2v1 off
+TOGGLE_REF=$(agent-browser snapshot 2>&1 | grep "Allow 2v1" | grep -o 'ref=e[0-9]*' | head -1 | sed 's/ref=//')
+click_ref "$TOGGLE_REF"
+
+# Test: allow2v1=false appears in URL
+url=$(agent-browser eval "location.search" 2>&1)
+if echo "$url" | grep -q "allow2v1=false"; then
+  echo "  PASS: allow2v1=false in URL after toggle"
+  inc PASS
+else
+  echo "  FAIL: allow2v1=false not in URL (got: $url)"
+  inc FAIL
+fi
+
+# Test: state restores after simulated reload
+agent-browser eval "state.players = []; state.tableCount = 1; state.allow2v1 = true; nextColorIndex = 0; loadPlayersFromURL(); renderSetup();" >/dev/null 2>&1
+agent-browser snapshot >/dev/null 2>&1
+tc=$(agent-browser eval "state.tableCount" 2>&1)
+a2v1=$(agent-browser eval "state.allow2v1" 2>&1)
+if [ "$tc" = "2" ] && [ "$a2v1" = "false" ]; then
+  echo "  PASS: state restored from URL (tables=$tc, allow2v1=$a2v1)"
+  inc PASS
+else
+  echo "  FAIL: state not restored (tables=$tc, allow2v1=$a2v1, expected tables=2, allow2v1=false)"
+  inc FAIL
+fi
+
+# Test: defaults produce clean URL (no query params except debug)
+reset_app
+url=$(agent-browser eval "location.search" 2>&1)
+if [ -z "$url" ] || [ "$url" = "?debug=" ]; then
+  echo "  PASS: defaults produce clean URL"
+  inc PASS
+else
+  echo "  FAIL: defaults should produce clean URL (got: $url)"
+  inc FAIL
+fi
 
 echo ""
 echo "=== Results ==="
