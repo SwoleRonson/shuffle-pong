@@ -61,7 +61,7 @@ snapshot_line() {
 # Reset app to fresh setup state (clears players, rounds, etc.)
 # After eval that modifies DOM, snapshot must run to re-index refs.
 reset_app() {
-  agent-browser eval "state.players = []; state.tableCount = 1; state.rounds = []; state.currentView = 'setup'; state.currentRound = 0; state.allow2v1 = true; nextColorIndex = 0; renderSetup();" >/dev/null 2>&1
+  agent-browser eval "state.players = []; state.tableCount = 1; state.rounds = []; state.currentView = 'setup'; state.currentRound = 0; state.allow2v1 = true; state.showAllRounds = false; nextColorIndex = 0; renderSetup();" >/dev/null 2>&1
   agent-browser snapshot >/dev/null 2>&1
 }
 
@@ -157,7 +157,7 @@ assert_snapshot_contains "schedule view shows Edit Players button" "Edit Players
 assert_snapshot_contains "schedule shows round status" "Round 1 of"
 assert_snapshot_contains "schedule shows player pills" "Alice"
 assert_snapshot_contains "schedule shows vs separator" "vs"
-assert_snapshot_contains "schedule shows table format" "TABLE"
+assert_snapshot_contains "schedule shows table label" "TABLE"
 
 # Test: Edit Players returns to setup
 # Get the Edit Players button ref from snapshot
@@ -222,8 +222,7 @@ assert_snapshot_contains "6p/3t: table count is 3" '"3 / 3"'
 
 # Generate schedule (e7 = Generate button)
 click_ref e7
-assert_snapshot_contains "6p/3t: all tables show SINGLES" "SINGLES"
-assert_snapshot_not_contains "6p/3t: no doubles tables" "DOUBLES"
+assert_snapshot_contains "6p/3t: shows table labels" "TABLE"
 
 # Check player count in summary
 assert_snapshot_contains "6p/3t: shows 6 players in summary" "6 players"
@@ -243,7 +242,7 @@ fill_ref e2 "P4"
 click_ref e3
 
 click_ref e7
-assert_snapshot_contains "4p/1t: table shows DOUBLES" "DOUBLES"
+assert_snapshot_contains "4p/1t: shows table label" "TABLE"
 assert_snapshot_contains "4p/1t: shows 4 players in summary" "4 players"
 
 echo ""
@@ -272,7 +271,7 @@ click_ref e7
 sleep 1
 agent-browser snapshot >/dev/null 2>&1
 assert_snapshot_contains "6p/1t: shows Sitting out label" "SITTING OUT"
-assert_snapshot_contains "6p/1t: shows DOUBLES table" "DOUBLES"
+assert_snapshot_contains "6p/1t: shows table label" "TABLE"
 
 # Test: sit-out display shows player pills
 snapshot=$(agent-browser snapshot 2>&1)

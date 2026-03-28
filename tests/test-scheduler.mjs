@@ -212,10 +212,11 @@ function allTests() {
         assert.ok(met[i][j], `P${i} and P${j} never met`);
   });
 
-  test('generateSchedule: no repeated partnerships when format allows (8p, 3 tables)', (S) => {
+  test('generateSchedule: full partner coverage with minimal repeats (8p, 3 tables)', (S) => {
     const players = Array.from({ length: 8 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
     const rounds = S.generateSchedule(players, 3);
-    assert.ok(maxPartnerCount(players, rounds) <= 1);
+    assert.ok(maxPartnerCount(players, rounds) <= 2, 'partner repeats should be minimal');
+    assert.strictEqual(partnerCoverage(players, rounds), 28, 'all 28 partner pairs should be covered');
   });
 
   test('generateSchedule: 4 players, 1 table — no repeated partnerships', (S) => {
@@ -284,7 +285,7 @@ function allTests() {
           for (let i = 0; i < n; i++)
             for (let j = i + 1; j < n; j++)
               maxP = Math.max(maxP, partnerCount[i][j]);
-          assert.ok(maxP <= 1, `maxPartner=${maxP}`);
+          assert.ok(maxP <= 2, `maxPartner=${maxP}`);
         }
       });
     }
@@ -343,18 +344,19 @@ function allTests() {
     assert.ok(maxPartnerCount(players, rounds) <= 1);
   });
 
-  test('edge case: 14 players, 4 tables — mixed format, unique partnerships within time limit', (S) => {
+  test('edge case: 14 players, 4 tables — full partner coverage within time limit', (S) => {
     const players = Array.from({ length: 14 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
     const start = Date.now();
     const rounds = S.generateSchedule(players, 4);
-    assert.ok(Date.now() - start < 30000, 'exceeded 30s');
+    assert.ok(Date.now() - start < 60000, 'exceeded 60s');
     assert.ok(rounds.length > 0);
     for (let ri = 0; ri < rounds.length; ri++) {
       const names = new Set();
       for (const t of rounds[ri].tables) for (const p of [...t.sideA, ...t.sideB]) names.add(p.name);
       assert.strictEqual(names.size, 14);
     }
-    assert.ok(maxPartnerCount(players, rounds) <= 1);
+    assert.ok(maxPartnerCount(players, rounds) <= 2, 'partner repeats should be minimal');
+    assert.strictEqual(partnerCoverage(players, rounds), 91, 'all 91 partner pairs should be covered');
   });
 
   // --- Format assignment edge cases ---
@@ -451,6 +453,67 @@ function allTests() {
     }
   });
 
+  // --- Partner coverage (stopping condition extends for partnerships) ---
+
+  test('partner coverage: 4p/1t — all 6 partner pairs covered', (S) => {
+    const players = Array.from({ length: 4 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 1);
+    assert.strictEqual(partnerCoverage(players, rounds), 6);
+  });
+
+  test('partner coverage: 5p/2t — all 10 partner pairs covered', (S) => {
+    const players = Array.from({ length: 5 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2);
+    assert.strictEqual(partnerCoverage(players, rounds), 10);
+  });
+
+  test('partner coverage: 7p/2t — all 21 partner pairs covered', (S) => {
+    const players = Array.from({ length: 7 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2);
+    assert.strictEqual(partnerCoverage(players, rounds), 21);
+  });
+
+  test('partner coverage: 8p/2t — all 28 partner pairs covered', (S) => {
+    const players = Array.from({ length: 8 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2);
+    assert.strictEqual(partnerCoverage(players, rounds), 28);
+  });
+
+  test('partner coverage: all-singles (4p/2t) — no partners, stops at opponent coverage', (S) => {
+    const players = Array.from({ length: 4 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2);
+    // All-singles: should still stop at opponent coverage (3 rounds for 4p round-robin)
+    assert.ok(rounds.length <= 4, `all-singles should not over-generate: got ${rounds.length}`);
+  });
+
+  test('partner coverage: round cap prevents explosion (9p/4t)', (S) => {
+    const players = Array.from({ length: 9 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 4);
+    assert.ok(rounds.length <= 20, `should not exceed 20 rounds: got ${rounds.length}`);
+  });
+
+  test('partner coverage: sit-out path extends for partners (6p/1t)', (S) => {
+    const players = Array.from({ length: 6 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 1);
+    // 6p/1t [4] with 2 sit-outs: 2 partnerships/round, 15 pairs, needs ~8 rounds
+    assert.ok(rounds.length >= 6, `should extend beyond opponent-only: got ${rounds.length}`);
+    assert.strictEqual(partnerCoverage(players, rounds), 15);
+  });
+
+  test('partner coverage: all-singles larger config (6p/3t) stops at opponent coverage', (S) => {
+    const players = Array.from({ length: 6 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 3);
+    // 6p/3t = [2,2,2] all-singles, 5 rounds for opponent coverage
+    assert.ok(rounds.length <= 6, `all-singles should not over-generate: got ${rounds.length}`);
+  });
+
+  test('partner coverage: allow2v1=false converts to all-singles, no over-generation (5p/2t)', (S) => {
+    const players = Array.from({ length: 5 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2, false);
+    // 5p/2t allow2v1=false → [2,2] with 1 sit-out, no partnerships possible
+    assert.ok(rounds.length <= 12, `should not over-generate when no partner formats: got ${rounds.length}`);
+  });
+
   // --- Integration: allow2v1=false with sit-outs ---
 
   test('allow2v1=false with sit-outs: 7p/2t → [4,2], 1 sits out, no 2v1', (S) => {
@@ -492,7 +555,25 @@ function allTests() {
   return tests;
 }
 
-// ===== Shared helper =====
+// ===== Shared helpers =====
+
+function partnerCoverage(players, rounds) {
+  const n = players.length;
+  const met = Array.from({ length: n }, () => Array(n).fill(false));
+  for (const round of rounds)
+    for (const table of round.tables)
+      for (const side of [table.sideA, table.sideB])
+        for (let i = 0; i < side.length; i++)
+          for (let j = i + 1; j < side.length; j++) {
+            met[players.indexOf(side[i])][players.indexOf(side[j])] = true;
+            met[players.indexOf(side[j])][players.indexOf(side[i])] = true;
+          }
+  let covered = 0;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++)
+      if (met[i][j]) covered++;
+  return covered;
+}
 
 function maxPartnerCount(players, rounds) {
   const n = players.length;

@@ -3,19 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>Shuffle Pong</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .pill {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 4px;
       padding: 4px 12px;
       border-radius: 20px;
       font-size: 14px;
       color: white;
       cursor: default;
+      min-width: 56px;
     }
     .pill button {
       background: none;
@@ -531,7 +532,15 @@
           for (let j = i + 1; j < n && allOppMet; j++)
             if (opp[i][j] === 0) allOppMet = false;
 
-        if (allOppMet) break;
+        let allParMet = true;
+        const hasPartnerFormats = formats.some(f => f >= 3);
+        if (hasPartnerFormats) {
+          for (let i = 0; i < n && allParMet; i++)
+            for (let j = i + 1; j < n && allParMet; j++)
+              if (par[i][j] === 0) allParMet = false;
+        }
+
+        if (allOppMet && allParMet) break;
       }
       return { rounds, opp, par };
     }
@@ -634,7 +643,8 @@
     while (rounds.length < maxRounds) {
       // Pick sit-out players: those with fewest sit-outs, break ties randomly
       const indices = Array.from({ length: n }, (_, i) => i);
-      indices.sort((a, b) => sitCounts[a] - sitCounts[b] || (Math.random() - 0.5));
+      shuffleArray(indices);
+      indices.sort((a, b) => sitCounts[a] - sitCounts[b]);
       const benchIndices = indices.slice(0, sitOutCount);
       const activeIndices = indices.slice(sitOutCount);
 
@@ -666,12 +676,20 @@
             }
       }
 
-      // Check if all pairs have met as opponents
+      // Check if all pairs have met as opponents and partners
       let allOppMet = true;
       for (let i = 0; i < n && allOppMet; i++)
         for (let j = i + 1; j < n && allOppMet; j++)
           if (opp[i][j] === 0) allOppMet = false;
-      if (allOppMet) break;
+
+      let allParMet = true;
+      const hasPartnerFormats = formats.some(f => f >= 3);
+      if (hasPartnerFormats) {
+        for (let i = 0; i < n && allParMet; i++)
+          for (let j = i + 1; j < n && allParMet; j++)
+            if (par[i][j] === 0) allParMet = false;
+      }
+      if (allOppMet && allParMet) break;
     }
 
     rounds.forEach(round => shuffleArray(round.tables));
@@ -693,7 +711,8 @@
     rounds: [],
     currentView: 'setup',
     currentRound: 0,
-    allow2v1: true
+    allow2v1: true,
+    showAllRounds: false
   };
 
   // ===== Render: Setup View =====
@@ -730,18 +749,18 @@
             <button onclick="addPlayer()"
               class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500">Add</button>
           </div>
-          <p class="text-gray-600 text-xs mt-1">Press Enter to add, click &times; to remove</p>
+          <p class="text-gray-500 text-xs mt-1">Press Enter to add, click &times; to remove</p>
         </div>
 
         <div class="mb-6">
           <label class="block text-xs text-gray-400 uppercase tracking-wider mb-2">Tables Available</label>
           <div class="flex items-center gap-4">
             <button onclick="changeTableCount(-1)" ${state.tableCount <= minTables ? 'disabled' : ''}
-              class="w-9 h-9 rounded-lg border border-gray-700 text-white text-lg ${state.tableCount <= minTables ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}"
+              class="w-9 h-9 rounded-lg border border-gray-700 text-white text-lg ${state.tableCount <= minTables ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}"
               style="background: #16213e;">−</button>
             <span class="text-2xl font-bold text-white min-w-[40px] text-center">${state.tableCount} / ${maxTables}</span>
             <button onclick="changeTableCount(1)" ${state.tableCount >= maxTables ? 'disabled' : ''}
-              class="w-9 h-9 rounded-lg border border-gray-700 text-white text-lg ${state.tableCount >= maxTables ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}"
+              class="w-9 h-9 rounded-lg border border-gray-700 text-white text-lg ${state.tableCount >= maxTables ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-700 cursor-pointer'}"
               style="background: #16213e;">+</button>
           </div>
         </div>
@@ -761,7 +780,7 @@
           Generate Schedule →
         </button>
 
-        <p class="text-center text-gray-600 text-xs mt-2">${getSummaryText()}</p>
+        <p class="text-center text-gray-500 text-xs mt-2">${getSummaryText()}</p>
       </div>
     `;
 
@@ -809,41 +828,56 @@
           ${state.players.length} players · ${state.rounds[0]?.tables.length || 0} table${(state.rounds[0]?.tables.length || 0) > 1 ? 's' : ''} · Round ${state.currentRound + 1} of ${roundCount}
         </p>
 
-        <button onclick="nextRound()"
-          class="w-full py-2.5 mb-4 rounded-xl text-white font-bold text-sm hover:opacity-90 cursor-pointer"
-          style="background: linear-gradient(135deg, #3498db, #2ecc71);">
-          ${state.currentRound >= roundCount - 1 ? 'Restart from Round 1 ↺' : 'Next Round →'}
-        </button>
+        <div class="flex gap-2 mb-4">
+          <button onclick="nextRound()"
+            class="flex-1 py-2.5 rounded-xl text-white font-bold text-sm hover:opacity-90 cursor-pointer"
+            style="background: linear-gradient(135deg, #3498db, #2ecc71);">
+            ${state.currentRound >= roundCount - 1 ? 'Restart from Round 1 ↺' : 'Next Round →'}
+          </button>
+          <button onclick="toggleAllRounds()"
+            class="px-3 py-2.5 rounded-xl text-sm font-medium border border-gray-700 hover:bg-gray-800 cursor-pointer"
+            style="background: #16213e; color: ${state.showAllRounds ? '#3498db' : '#999'};">
+            ${state.showAllRounds ? 'Show Current ▾' : 'Show All ▸'}
+          </button>
+        </div>
 
-        ${state.rounds.map((round, ri) => `
+        ${(state.showAllRounds ? state.rounds : [state.rounds[state.currentRound]]).map((round, i) => {
+          const ri = state.showAllRounds ? i : state.currentRound;
+          return `
           <div class="card" style="border-left: 3px solid ${ri === state.currentRound ? '#3498db' : '#333'};">
-            <div class="text-sm font-bold mb-3" style="color: ${ri === state.currentRound ? '#3498db' : '#aaa'};">
-              Round ${ri + 1}
+            <div class="text-center mb-4 pb-3 border-b border-gray-700">
+              <span class="text-base font-bold" style="color: ${ri === state.currentRound ? '#3498db' : '#ccc'};">
+                Round ${ri + 1}
+              </span>
             </div>
             ${round.tables.map((table, ti) => `
-              <div class="${ti < round.tables.length - 1 ? 'mb-3' : ''}">
-                <div class="text-xs text-gray-400 uppercase tracking-wider mb-1.5">
-                  Table ${ti + 1} · ${table.format === 'singles' ? 'Singles' : table.format === 'doubles' ? 'Doubles' : '2v1'}
+              <div class="${ti < round.tables.length - 1 ? 'mb-4' : ''}">
+                <div class="text-xs text-gray-400 uppercase tracking-wider mb-1.5 text-center font-medium">
+                  Table ${ti + 1}
                 </div>
-                <div class="flex items-center gap-2 flex-wrap">
-                  ${table.sideA.map(p => `
-                    <span class="pill" style="background: ${PALETTE[p.colorIndex % PALETTE.length]}; font-size: 13px; padding: 2px 10px;">
-                      ${escapeHtml(p.name)}
-                    </span>
-                  `).join('')}
-                  <span class="text-gray-400 font-bold text-sm">vs</span>
-                  ${table.sideB.map(p => `
-                    <span class="pill" style="background: ${PALETTE[p.colorIndex % PALETTE.length]}; font-size: 13px; padding: 2px 10px;">
-                      ${escapeHtml(p.name)}
-                    </span>
-                  `).join('')}
+                <div class="flex items-center">
+                  <div class="flex flex-col gap-1 items-end flex-1">
+                    ${table.sideA.map(p => `
+                      <span class="pill" style="background: ${PALETTE[p.colorIndex % PALETTE.length]}; font-size: 13px; padding: 2px 10px;">
+                        ${escapeHtml(p.name)}
+                      </span>
+                    `).join('')}
+                  </div>
+                  <span class="text-gray-400 font-bold text-sm mx-3">vs</span>
+                  <div class="flex flex-col gap-1 items-start flex-1">
+                    ${table.sideB.map(p => `
+                      <span class="pill" style="background: ${PALETTE[p.colorIndex % PALETTE.length]}; font-size: 13px; padding: 2px 10px;">
+                        ${escapeHtml(p.name)}
+                      </span>
+                    `).join('')}
+                  </div>
                 </div>
               </div>
             `).join('')}
             ${(round.sittingOut && round.sittingOut.length > 0) ? `
-              <div class="mt-3 pt-3 border-t border-gray-700">
-                <span class="text-xs text-gray-500 uppercase tracking-wider">Sitting out</span>
-                <div class="flex flex-wrap gap-1.5 mt-1.5">
+              <div class="mt-3 pt-3 border-t border-gray-700 text-center">
+                <span class="text-xs text-gray-400 uppercase tracking-wider">Sitting out</span>
+                <div class="flex flex-wrap gap-1.5 mt-1.5 justify-center">
                   ${round.sittingOut.map(p => `
                     <span class="pill" style="background: ${PALETTE[p.colorIndex % PALETTE.length]}; font-size: 12px; padding: 2px 8px; opacity: 0.5;">
                       ${escapeHtml(p.name)}
@@ -853,9 +887,28 @@
               </div>
             ` : ''}
           </div>
-        `).join('')}
+        `}).join('')}
       </div>
     `;
+  }
+
+  // ===== URL Sync =====
+
+  function updateURL() {
+    const names = state.players.map(p => p.name);
+    const hash = names.length ? '#' + names.map(n => encodeURIComponent(n)).join(',') : '';
+    history.replaceState(null, '', location.pathname + location.search + hash);
+  }
+
+  function loadPlayersFromURL() {
+    const hash = location.hash.slice(1);
+    if (!hash) return;
+    const names = hash.split(',').map(n => decodeURIComponent(n)).filter(Boolean);
+    for (const name of names) {
+      if (state.players.length >= 14) break;
+      if (state.players.some(p => p.name.toLowerCase() === name.toLowerCase())) continue;
+      state.players.push({ name, colorIndex: nextColorIndex++ });
+    }
   }
 
   // ===== Event Handlers =====
@@ -868,12 +921,14 @@
     if (state.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
     state.players.push({ name, colorIndex: nextColorIndex++ });
     state._focusInput = true;
+    updateURL();
     renderSetup();
   }
 
   function removePlayer(index) {
     state.players.splice(index, 1);
     state._focusInput = true;
+    updateURL();
     renderSetup();
   }
 
@@ -892,7 +947,8 @@
     if (btn) {
       btn.disabled = true;
       btn.textContent = 'Generating...';
-      btn.classList.add('opacity-60');
+      btn.style.background = '#555';
+      btn.classList.add('cursor-wait', 'pointer-events-none', 'animate-pulse');
     }
 
     // Defer to next frame so UI updates before heavy computation
@@ -900,6 +956,7 @@
       state.rounds = generateSchedule(state.players, state.tableCount, state.allow2v1);
       state.currentView = 'schedule';
       state.currentRound = 0;
+      state.showAllRounds = false;
       renderSchedule();
     }, 20);
   }
@@ -913,7 +970,13 @@
     state.currentView = 'setup';
     state.rounds = [];
     state.currentRound = 0;
+    state.showAllRounds = false;
     renderSetup();
+  }
+
+  function toggleAllRounds() {
+    state.showAllRounds = !state.showAllRounds;
+    renderSchedule();
   }
 
   function toggle2v1() {
@@ -924,6 +987,7 @@
   // ===== Init =====
 
   if (typeof document !== 'undefined') {
+    loadPlayersFromURL();
     state._focusInput = true;
     renderSetup();
   }
