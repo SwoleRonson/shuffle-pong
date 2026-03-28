@@ -247,6 +247,45 @@ assert_snapshot_contains "4p/1t: table shows DOUBLES" "DOUBLES"
 assert_snapshot_contains "4p/1t: shows 4 players in summary" "4 players"
 
 echo ""
+echo "=== Sit-out Display Tests ==="
+
+# Setup: 6 players, 1 table (4 play, 2 sit out)
+reset_app
+fill_ref e2 "Alpha"
+click_ref e3
+fill_ref e2 "Bravo"
+click_ref e3
+fill_ref e2 "Charlie"
+click_ref e3
+fill_ref e2 "Delta"
+click_ref e3
+fill_ref e2 "Echo"
+click_ref e3
+fill_ref e2 "Foxtrot"
+click_ref e3
+
+# Keep table count at 1 (min is now 1)
+# With 6p/1t: decideTableFormats returns [4] = doubles, 2 sit out
+# Generate button ref is e7
+click_ref e7
+# Wait briefly for schedule generation
+sleep 1
+agent-browser snapshot >/dev/null 2>&1
+assert_snapshot_contains "6p/1t: shows Sitting out label" "SITTING OUT"
+assert_snapshot_contains "6p/1t: shows DOUBLES table" "DOUBLES"
+
+# Test: sit-out display shows player pills
+snapshot=$(agent-browser snapshot 2>&1)
+SIT_OUT_COUNT=$(echo "$snapshot" | grep -c "SITTING OUT")
+if [ "$SIT_OUT_COUNT" -ge 1 ]; then
+  echo "  PASS: sit-out section present in round cards"
+  inc PASS
+else
+  echo "  FAIL: sit-out section missing (expected >=1, got $SIT_OUT_COUNT)"
+  inc FAIL
+fi
+
+echo ""
 echo "=== Player Management Edge Cases ==="
 
 # Start fresh: reset app state

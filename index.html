@@ -840,6 +840,18 @@
                 </div>
               </div>
             `).join('')}
+            ${(round.sittingOut && round.sittingOut.length > 0) ? `
+              <div class="mt-3 pt-3 border-t border-gray-700">
+                <span class="text-xs text-gray-500 uppercase tracking-wider">Sitting out</span>
+                <div class="flex flex-wrap gap-1.5 mt-1.5">
+                  ${round.sittingOut.map(p => `
+                    <span class="pill" style="background: ${PALETTE[p.colorIndex % PALETTE.length]}; font-size: 12px; padding: 2px 8px; opacity: 0.5;">
+                      ${escapeHtml(p.name)}
+                    </span>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
           </div>
         `).join('')}
       </div>
