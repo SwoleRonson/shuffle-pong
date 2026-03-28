@@ -451,6 +451,44 @@ function allTests() {
     }
   });
 
+  // --- Integration: allow2v1=false with sit-outs ---
+
+  test('allow2v1=false with sit-outs: 7p/2t → [4,2], 1 sits out, no 2v1', (S) => {
+    const players = Array.from({ length: 7 }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+    const rounds = S.generateSchedule(players, 2, false);
+    assert.ok(rounds.length > 0);
+    for (const round of rounds) {
+      for (const t of round.tables) {
+        assert.notStrictEqual(t.format, '2v1', 'no 2v1 tables when allow2v1=false');
+      }
+      assert.strictEqual(round.sittingOut.length, 1);
+      const active = new Set();
+      for (const t of round.tables) for (const p of [...t.sideA, ...t.sideB]) active.add(p.name);
+      assert.strictEqual(active.size + round.sittingOut.length, 7);
+    }
+  });
+
+  test('allow2v1=false: all configs 2-14p produce valid schedules with no 2v1', (S) => {
+    for (let n = 2; n <= 14; n++) {
+      const maxT = Math.floor(n / 2);
+      for (let t = 1; t <= Math.min(maxT, 5); t++) {
+        const players = Array.from({ length: n }, (_, i) => ({ name: `P${i}`, colorIndex: i }));
+        const rounds = S.generateSchedule(players, t, false);
+        assert.ok(rounds.length > 0, `${n}p/${t}t allow2v1=false: should produce rounds`);
+        for (const round of rounds) {
+          for (const table of round.tables) {
+            assert.notStrictEqual(table.format, '2v1', `${n}p/${t}t: no 2v1 when disabled`);
+          }
+          const active = new Set();
+          for (const table of round.tables)
+            for (const p of [...table.sideA, ...table.sideB]) active.add(p.name);
+          const sitOut = round.sittingOut ? round.sittingOut.length : 0;
+          assert.strictEqual(active.size + sitOut, n, `${n}p/${t}t: all players accounted for`);
+        }
+      }
+    }
+  });
+
   return tests;
 }
 
