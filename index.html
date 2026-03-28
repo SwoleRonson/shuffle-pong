@@ -50,6 +50,15 @@
     '#117a65', '#5b3daf', '#4a7c10', '#982d6b'
   ];
 
+  /** Sort tables so singles are at the edges (first and last positions). */
+  function sortTablesEdgeSingles(tables) {
+    const singles = tables.filter(t => t.format === 'singles');
+    const others = tables.filter(t => t.format !== 'singles');
+    if (singles.length === 0) return others;
+    if (singles.length === 1) return [singles[0], ...others];
+    return [singles[0], ...others, ...singles.slice(1)];
+  }
+
   /**
    * Decide table formats for N players across at most T tables.
    * Returns an array of player counts per table (2, 3, or 4).
@@ -625,7 +634,7 @@
     }
 
     if (best) best.forEach(round => {
-      shuffleArray(round.tables);
+      round.tables = sortTablesEdgeSingles(round.tables);
       round.sittingOut = round.sittingOut || [];
     });
     return best;
@@ -711,7 +720,7 @@
       if (allOppMet && allParMet) break;
     }
 
-    rounds.forEach(round => shuffleArray(round.tables));
+    rounds.forEach(round => { round.tables = sortTablesEdgeSingles(round.tables); });
     return rounds;
   }
 
@@ -860,7 +869,7 @@
 
   // Expose for testing
   if (typeof globalThis !== 'undefined') {
-    globalThis.Scheduler = { decideTableFormats, assignRound, generateSchedule, generateScheduleFullField, shuffleArray, analyseSchedule, PALETTE };
+    globalThis.Scheduler = { decideTableFormats, assignRound, generateSchedule, generateScheduleFullField, shuffleArray, sortTablesEdgeSingles, analyseSchedule, PALETTE };
   }
 
   // ===== App State =====
