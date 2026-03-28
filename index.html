@@ -43,10 +43,9 @@
   // ===== Scheduler Module =====
 
   const PALETTE = [
-    '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
-    '#1abc9c', '#e67e22', '#2980b9', '#27ae60', '#f1c40f',
-    '#8e44ad', '#16a085', '#d35400', '#c0392b', '#2c3e50',
-    '#7f8c8d', '#d4ac0d', '#1a5276', '#a93226', '#117a65'
+    '#e74c3c', '#3498db', '#2ecc71', '#9b59b6', '#e67e22',
+    '#1abc9c', '#2980b9', '#d35400', '#8e44ad', '#27ae60',
+    '#c0392b', '#16a085', '#1a5276', '#a93226'
   ];
 
   /**
@@ -471,14 +470,23 @@
       // No early stopping — generate all n-1 rounds for complete coverage
     }
 
-    // Convert indices to player objects
+    // Convert indices to player objects, shuffle table positions per round
     return schedule.map(round => ({
-      tables: round.map(t => ({
+      tables: shuffleArray(round.map(t => ({
         format: t.format === 4 ? 'doubles' : t.format === 3 ? '2v1' : 'singles',
         sideA: (t.sideA || []).map(i => players[i]),
         sideB: (t.sideB || []).map(i => players[i])
-      }))
+      })))
     }));
+  }
+
+  /** Shuffle array in-place (Fisher-Yates). */
+  function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
   }
 
   /**
@@ -589,12 +597,14 @@
       if (Date.now() - startTime > timeLimit) break;
     }
 
+    // Shuffle table positions per round so players don't stay at the same table
+    if (best) best.forEach(round => shuffleArray(round.tables));
     return best;
   }
 
   // Expose for testing
   if (typeof globalThis !== 'undefined') {
-    globalThis.Scheduler = { decideTableFormats, assignRound, generateSchedule };
+    globalThis.Scheduler = { decideTableFormats, assignRound, generateSchedule, shuffleArray };
   }
 
   // ===== App State =====
@@ -629,7 +639,7 @@
           <label class="block text-xs text-gray-400 uppercase tracking-wider mb-2">Players</label>
           <div id="player-pills" class="flex flex-wrap gap-2 mb-3">
             ${state.players.map((p, i) => `
-              <span class="pill" style="background: ${PALETTE[p.colorIndex % 20]}">
+              <span class="pill" style="background: ${PALETTE[p.colorIndex % PALETTE.length]}">
                 ${escapeHtml(p.name)}
                 <button onclick="removePlayer(${i})" title="Remove">&times;</button>
               </span>
@@ -722,18 +732,18 @@
             </div>
             ${round.tables.map((table, ti) => `
               <div class="${ti < round.tables.length - 1 ? 'mb-3' : ''}">
-                <div class="text-xs text-gray-600 uppercase tracking-wider mb-1.5">
+                <div class="text-xs text-gray-400 uppercase tracking-wider mb-1.5">
                   Table ${ti + 1} · ${table.format === 'singles' ? 'Singles' : table.format === 'doubles' ? 'Doubles' : '2v1'}
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">
                   ${table.sideA.map(p => `
-                    <span class="pill" style="background: ${PALETTE[p.colorIndex % 20]}; font-size: 13px; padding: 2px 10px;">
+                    <span class="pill" style="background: ${PALETTE[p.colorIndex % PALETTE.length]}; font-size: 13px; padding: 2px 10px;">
                       ${escapeHtml(p.name)}
                     </span>
                   `).join('')}
-                  <span class="text-gray-600 font-bold text-sm">vs</span>
+                  <span class="text-gray-400 font-bold text-sm">vs</span>
                   ${table.sideB.map(p => `
-                    <span class="pill" style="background: ${PALETTE[p.colorIndex % 20]}; font-size: 13px; padding: 2px 10px;">
+                    <span class="pill" style="background: ${PALETTE[p.colorIndex % PALETTE.length]}; font-size: 13px; padding: 2px 10px;">
                       ${escapeHtml(p.name)}
                     </span>
                   `).join('')}
@@ -774,10 +784,22 @@
 
   function generate() {
     if (state.players.length < 2) return;
-    state.rounds = generateSchedule(state.players, state.tableCount);
-    state.currentView = 'schedule';
-    state.currentRound = 0;
-    renderSchedule();
+
+    // Show loading state
+    const btn = document.querySelector('button[onclick="generate()"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Generating...';
+      btn.classList.add('opacity-60');
+    }
+
+    // Defer to next frame so UI updates before heavy computation
+    setTimeout(() => {
+      state.rounds = generateSchedule(state.players, state.tableCount);
+      state.currentView = 'schedule';
+      state.currentRound = 0;
+      renderSchedule();
+    }, 20);
   }
 
   function nextRound() {
