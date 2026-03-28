@@ -58,6 +58,13 @@ snapshot_line() {
   agent-browser snapshot 2>&1 | grep "$1"
 }
 
+# Reset app to fresh setup state (clears players, rounds, etc.)
+# After eval that modifies DOM, snapshot must run to re-index refs.
+reset_app() {
+  agent-browser eval "state.players = []; state.tableCount = 1; state.rounds = []; state.currentView = 'setup'; state.currentRound = 0; nextColorIndex = 0; renderSetup();" >/dev/null 2>&1
+  agent-browser snapshot >/dev/null 2>&1
+}
+
 # --- Server lifecycle ---
 
 start_server() {
@@ -187,6 +194,108 @@ assert_snapshot_contains "last round shows restart button" "Restart from Round 1
 RESTART_REF=$(agent-browser snapshot 2>&1 | grep "Restart" | grep -o 'ref=e[0-9]*' | head -1 | sed 's/ref=//')
 click_ref "$RESTART_REF"
 assert_snapshot_contains "restart wraps to round 1" "Round 1 of"
+
+echo ""
+echo "=== Schedule Quality Visual Checks ==="
+
+# Start fresh: reset app state
+reset_app
+
+# Add 6 players for 6p/3t test (e2=input, e3=Add are stable refs)
+fill_ref e2 "Alpha"
+click_ref e3
+fill_ref e2 "Bravo"
+click_ref e3
+fill_ref e2 "Charlie"
+click_ref e3
+fill_ref e2 "Delta"
+click_ref e3
+fill_ref e2 "Echo"
+click_ref e3
+fill_ref e2 "Foxtrot"
+click_ref e3
+
+# Increase tables to max (e5 = + button): 6 players -> min 2, max 3
+click_ref e5
+assert_snapshot_contains "6p/3t: table count is 3" '"3 / 3"'
+
+# Generate schedule (e6 = Generate button)
+click_ref e6
+assert_snapshot_contains "6p/3t: all tables show SINGLES" "SINGLES"
+assert_snapshot_not_contains "6p/3t: no doubles tables" "DOUBLES"
+
+# Check player count in summary
+assert_snapshot_contains "6p/3t: shows 6 players in summary" "6 players"
+
+# Check round count in summary
+assert_snapshot_contains "6p/3t: shows round count" "Round 1 of"
+
+# Now test 4p/1t doubles: fresh setup with 4 players
+reset_app
+fill_ref e2 "P1"
+click_ref e3
+fill_ref e2 "P2"
+click_ref e3
+fill_ref e2 "P3"
+click_ref e3
+fill_ref e2 "P4"
+click_ref e3
+
+click_ref e6
+assert_snapshot_contains "4p/1t: table shows DOUBLES" "DOUBLES"
+assert_snapshot_contains "4p/1t: shows 4 players in summary" "4 players"
+
+echo ""
+echo "=== Player Management Edge Cases ==="
+
+# Start fresh: reset app state
+reset_app
+
+# Test: cannot add empty player name
+click_ref e3
+assert_snapshot_not_contains "empty name not added (no pills)" "pill"
+
+# Add a player named "Test"
+fill_ref e2 "Test"
+click_ref e3
+assert_snapshot_contains "Test player added" "Test"
+
+# Test: cannot add duplicate player name (case-insensitive)
+fill_ref e2 "test"
+click_ref e3
+# "Test" should appear in snapshot exactly once as a StaticText inside a pill
+snapshot=$(agent-browser snapshot 2>&1)
+# Count lines matching StaticText "Test" (pill label) — should be 1
+PILL_COUNT=$(echo "$snapshot" | grep -c 'StaticText "Test"')
+if [ "$PILL_COUNT" -le 1 ]; then
+  echo "  PASS: duplicate name (case-insensitive) rejected"
+  inc PASS
+else
+  echo "  FAIL: duplicate name (case-insensitive) was added ($PILL_COUNT occurrences)"
+  inc FAIL
+fi
+
+# Test: can add up to 14 players — start fresh
+reset_app
+for i in $(seq 1 14); do
+  fill_ref e2 "Player$i"
+  click_ref e3
+done
+assert_snapshot_contains "14 players added: shows Player14" "Player14"
+
+# Test: adding 15th player is silently rejected (still shows 14)
+fill_ref e2 "Player15"
+click_ref e3
+# Player count should still be 14 (verified via JS to avoid false match in input field)
+snapshot=$(agent-browser eval "state.players.length" 2>&1)
+if [ "$snapshot" = "14" ]; then
+  echo "  PASS: 15th player rejected (player count still 14)"
+  inc PASS
+else
+  echo "  FAIL: 15th player was added (count: $snapshot, expected 14)"
+  inc FAIL
+fi
+assert_snapshot_contains "still shows 14 players in summary" "14 players"
 
 echo ""
 echo "=== Results ==="
